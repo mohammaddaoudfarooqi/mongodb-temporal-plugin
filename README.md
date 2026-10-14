@@ -21,6 +21,13 @@ You don't need Cassandra, PostgreSQL or Elasticsearch.
 > Use it as a starting point for your own implementation, and validate,
 > test and adapt it thoroughly before you run it anywhere that matters.
 > It is not an officially supported MongoDB product.
+>
+> **The quickstarts run Temporal without authentication.** They keep it
+> on localhost or behind an SSH tunnel. Before anyone else can reach
+> Temporal, turn on mTLS and an authorizer
+> ([security guide](docs/operator/security.md#secure-the-temporal-frontend-first)),
+> and keep personal data out of search attributes
+> ([what is stored in plaintext](docs/operator/security.md#what-is-stored-in-plaintext)).
 
 ## What it is
 

@@ -9,12 +9,14 @@ URI='mongodb+srv://tmc-t:URIPASSWORD3@tmc-t.abcde.mongodb.net/?w=majority'
 
 setup() {
   CT="$BATS_TEST_DIRNAME/../scripts/qualify.sh"
+  HERE_QS="$BATS_TEST_DIRNAME/../../../quickstart/aws"
   export QUALIFY_HOME="$BATS_TEST_TMPDIR/home"
   mkdir -p "$QUALIFY_HOME"
   export STUB_FIXTURES="$BATS_TEST_TMPDIR/fixtures" CALLS="$BATS_TEST_TMPDIR/calls"
   mkdir -p "$STUB_FIXTURES"; : > "$CALLS"; : > "$CALLS.stdin"
   export PATH="$BATS_TEST_DIRNAME/stubs:$PATH"
   export QUALIFY_TF_STATE_DIR="$BATS_TEST_TMPDIR/tfstate.d"
+  export ADMIN_URI='mongodb+srv://tmc-t:ADMINPASS5@tmc-t.abcde.mongodb.net/?w=majority'
   export URI QUALIFY_POLL=0 QUALIFY_GO_TARBALL="$BATS_TEST_TMPDIR/go.tar.gz"
   : > "$QUALIFY_GO_TARBALL"
   ssh-keygen -q -t ed25519 -N '' -f "$BATS_TEST_TMPDIR/id" >/dev/null
@@ -66,6 +68,7 @@ case "$args" in
     grep -q '^garbage' "$STATE" && { echo "Failed to load state" >&2; exit 1; }
     cat "$STATE" ;;
   *" output -raw mongodb_uri "*) printf '%s' "$URI" ;;
+  *" output -raw mongodb_admin_uri "*) printf '%s' "$ADMIN_URI" ;;
   *" output -json "?*) out "${@: -1}" ;;
   *" output -json "*) echo "bare output -json would leak sensitive values" >&2; exit 97 ;;
 esac
@@ -540,4 +543,20 @@ SH
   run bash "$CT" run --profile quickstart
   [ "$status" -ne 0 ]
   [[ "$output" == *"no test suite"* ]]
+}
+
+@test "quickstart start sends the runtime URI and the setup-only admin URI on stdin" {
+  bash "$CT" up --profile quickstart >/dev/null
+  run bash "$CT" start --profile quickstart
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  grep -q "^MONGODB_URI=.*URIPASSWORD3" "$CALLS.stdin"
+  grep -q "^MONGODB_ADMIN_URI=.*ADMINPASS5" "$CALLS.stdin"
+  ! grep -q "ADMINPASS5" "$CALLS"
+  [[ "$output" != *ADMINPASS5* ]]
+}
+
+@test "quickstart tour runs as the service user" {
+  bash "$CT" up --profile quickstart >/dev/null
+  run bash "$HERE_QS/quickstart.sh" tour </dev/null
+  grep -q "sudo -u temporal" "$CALLS"
 }

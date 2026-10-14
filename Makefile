@@ -15,6 +15,7 @@ help:
 	@echo "  make integration   - integration tests (requires Docker)"
 	@echo "  make conformance   - upstream Temporal conformance suite"
 	@echo "  make lint          - guard scripts for known regressions"
+	@echo "  make fuzz          - fuzz the visibility query converters"
 	@echo "  make dco           - check DCO sign-off on HEAD commits"
 	@echo "  make build         - build server + tool binaries"
 	@echo "  make qualify-lint - fmt/validate/shellcheck the AWS + Atlas release qualification"
@@ -102,6 +103,15 @@ conformance:
 # The docker image lint runs post-build in CI, not here.
 .PHONY: lint
 lint: lint-prevention
+
+# fuzz drives adversarial visibility queries through both converters;
+# accepted queries must produce only allow-listed operators, never
+# JavaScript. FUZZTIME per target (default 30s).
+FUZZTIME ?= 30s
+.PHONY: fuzz
+fuzz:
+	$(GO) test -run '^$$' -fuzz FuzzBSONConverter_OnlySafeOperators -fuzztime $(FUZZTIME) ./internal/visibility/converter/
+	$(GO) test -run '^$$' -fuzz FuzzSearchConverter_NoJavaScript -fuzztime $(FUZZTIME) ./internal/visibility/converter/
 
 .PHONY: lint-prevention
 lint-prevention:

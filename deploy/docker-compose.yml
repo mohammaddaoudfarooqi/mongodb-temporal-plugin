@@ -29,7 +29,7 @@ services:
     # --- Self-hosted MongoDB 8.0 (profile: default / local) ------------
     mongo:
         profiles: ["local", ""]
-        image: mongo:8.0
+        image: mongo:8.0@sha256:6657bf2413fefc5be649390318f5b4cd7328e982722f8ce2ac6dfa6f0a42cb03
         container_name: temporal-mongo
         command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
         ports:
@@ -47,7 +47,7 @@ services:
 
     mongo-init:
         profiles: ["local", ""]
-        image: mongo:8.0
+        image: mongo:8.0@sha256:6657bf2413fefc5be649390318f5b4cd7328e982722f8ce2ac6dfa6f0a42cb03
         container_name: temporal-mongo-init
         depends_on:
             mongo:
@@ -154,7 +154,7 @@ services:
 
     # --- Temporal Web UI ---------------------------------------------
     temporal-ui:
-        image: temporalio/ui:latest
+        image: temporalio/ui:2.37.4@sha256:350b26d351f46a8917e0a5f98035487bcdfcf3f94fd5051badeeb723a8b553b1
         container_name: temporal-ui
         depends_on:
             - temporal

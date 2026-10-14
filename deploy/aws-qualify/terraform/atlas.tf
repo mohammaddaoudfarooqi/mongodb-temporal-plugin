@@ -83,3 +83,38 @@ resource "mongodbatlas_project_ip_access_list" "vpc" {
 
   depends_on = [aws_route.to_atlas]
 }
+
+# The quickstart's services run as this least-privilege user: readWrite on
+# the Temporal and showcase databases only. The admin user above sets up
+# the schema and indexes and is never stored on the host.
+resource "random_password" "runtime" {
+  count   = var.profile == "quickstart" ? 1 : 0
+  length  = 32
+  special = false
+}
+
+resource "mongodbatlas_database_user" "runtime" {
+  count              = var.profile == "quickstart" ? 1 : 0
+  project_id         = var.atlas_project_id
+  username           = "${local.name}-runtime"
+  password           = random_password.runtime[0].result
+  auth_database_name = "admin"
+
+  roles {
+    role_name     = "readWrite"
+    database_name = "temporal"
+  }
+  roles {
+    role_name     = "readWrite"
+    database_name = "temporal_visibility"
+  }
+  roles {
+    role_name     = "readWrite"
+    database_name = "support"
+  }
+
+  scopes {
+    name = mongodbatlas_advanced_cluster.cluster.name
+    type = "CLUSTER"
+  }
+}

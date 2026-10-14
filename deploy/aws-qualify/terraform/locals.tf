@@ -46,5 +46,9 @@ locals {
   # standard_srv is "mongodb+srv://<host>"; the password is alphanumeric,
   # so no URL encoding is needed. Exposed only as a sensitive output.
   srv_host    = replace(mongodbatlas_advanced_cluster.cluster.connection_strings.standard_srv, "mongodb+srv://", "")
-  mongodb_uri = "mongodb+srv://${mongodbatlas_database_user.qualify.username}:${random_password.db.result}@${local.srv_host}/?retryWrites=true&w=majority"
+  admin_uri   = "mongodb+srv://${mongodbatlas_database_user.qualify.username}:${random_password.db.result}@${local.srv_host}/?retryWrites=true&w=majority"
+  runtime_uri = var.profile == "quickstart" ? "mongodb+srv://${mongodbatlas_database_user.runtime[0].username}:${random_password.runtime[0].result}@${local.srv_host}/?retryWrites=true&w=majority" : ""
+  # What the services use: the runtime user on the quickstart, the admin
+  # user on test stacks (whose gates need it).
+  mongodb_uri = var.profile == "quickstart" ? local.runtime_uri : local.admin_uri
 }

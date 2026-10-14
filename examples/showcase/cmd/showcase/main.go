@@ -262,6 +262,7 @@ func setup(ctx context.Context, cfg config) error {
 		fmt.Printf("✓ knowledge-base index ready: %s (full-text; set VOYAGE_API_KEY or SHOWCASE_EMBEDDING=auto for vector search)\n", kb.TextIndexName)
 	} else {
 		fmt.Printf("✓ knowledge-base indexes ready: %s (full-text) and %s (vector, %s embeddings)\n", kb.TextIndexName, kb.VectorIndexName, cfg.mode)
+		fmt.Println("! vector search sends ticket text to Voyage AI (demo data only; SHOWCASE_EMBEDDING=none sends nothing)")
 	}
 	docs, err := data.Seed()
 	if err != nil {

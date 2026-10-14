@@ -128,6 +128,14 @@ Each host also terminates itself after `max_hours` (3 h functional,
   the hosts on SSH stdin and is never printed. The harness reads
   only named outputs, because a bare `terraform output -json` would
   print it.
+- **The Terraform state** (`terraform/terraform.tfstate.d/`) holds the
+  generated database passwords. Keep it private: it is gitignored; never
+  sync or share it. Use an encrypted remote backend if you run the
+  harness regularly. `down` deletes the database users.
+- Use a dedicated Atlas project and short-lived AWS credentials. The
+  first SSH connection to a new host accepts its key. See
+  [the security guide](../../docs/operator/security.md#quickstart-and-qualification-scripts)
+  for these and the residual risks.
 
 ## Developing the harness
 

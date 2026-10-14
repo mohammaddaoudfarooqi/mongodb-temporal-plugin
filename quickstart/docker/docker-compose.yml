@@ -12,7 +12,9 @@
 #                    the ticket indexes, seed tickets and the SLA schedule.
 #   showcase-worker  runs the support-desk workflows.
 #
-# Every port binds to 127.0.0.1: MongoDB runs without authentication.
+# DEVELOPMENT ONLY. MongoDB runs without authentication, and Temporal and
+# its UI accept every request, so every port binds to 127.0.0.1. Never
+# publish these ports. See docs/operator/security.md.
 
 name: temporal-mongodb-quickstart
 
@@ -20,7 +22,7 @@ x-mongo-uri: &mongo-uri "mongodb://mongodb:27017/?directConnection=true"
 
 services:
   mongodb:
-    image: mongodb/mongodb-atlas-local:8.2
+    image: mongodb/mongodb-atlas-local:8.2@sha256:bb4d49b8828884bc523cab1f4e39ed6fa3615e56d30439410ba1446677c12ffa
     hostname: mongodb
     ports:
       - "127.0.0.1:${MONGO_PORT:-27017}:27017"
@@ -87,7 +89,7 @@ services:
       start_period: 20s
 
   temporal-ui:
-    image: temporalio/ui:${TEMPORAL_UI_VERSION:-2.37.4}
+    image: ${TEMPORAL_UI_IMAGE:-temporalio/ui:2.37.4@sha256:350b26d351f46a8917e0a5f98035487bcdfcf3f94fd5051badeeb723a8b553b1}
     depends_on:
       temporal:
         condition: service_healthy

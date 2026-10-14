@@ -3,23 +3,29 @@
 # showcase worker and the Temporal UI as services that survive reboots.
 #
 #   quickstart.sh start    reads KEY=VALUE settings on stdin (MONGODB_URI,
-#                          SHOWCASE_EMBEDDING, VOYAGE_API_KEY, VOYAGE_MODEL,
-#                          NUM_HISTORY_SHARDS), then installs and starts
-#                          everything. Safe to re-run.
+#                          MONGODB_ADMIN_URI, SHOWCASE_EMBEDDING,
+#                          VOYAGE_API_KEY, VOYAGE_MODEL, NUM_HISTORY_SHARDS),
+#                          then installs and starts everything. Safe to re-run.
+#
+# The services run as a dedicated system user (no login shell, no sudo)
+# with the least-privilege runtime credential. The admin credential is
+# used only for the one-time schema and index setup and is never written
+# to disk.
 set -euo pipefail
 # shellcheck source=common.sh
 . "$(dirname "$0")/common.sh"
 
 ETC=${QS_ETC:-/etc/temporal-quickstart}
 UNITS=${QS_SYSTEMD_DIR:-/etc/systemd/system}
-ME=$(id -un)
-UI_IMAGE=${QS_UI_IMAGE:-temporalio/ui:2.37.4}
+SERVICE_USER=${QS_SERVICE_USER:-temporal}
+UI_IMAGE=${QS_UI_IMAGE:-temporalio/ui:2.37.4@sha256:350b26d351f46a8917e0a5f98035487bcdfcf3f94fd5051badeeb723a8b553b1}
 
-# put FILE: stdin into a 0600 file owned by this user, written with umask 077.
+# put FILE: stdin into a 0600 file owned by the service user, written
+# with umask 077.
 put() {
   local tmp; tmp=$(umask 077; mktemp)
   cat > "$tmp"
-  sudo install -m 0600 -o "$ME" "$tmp" "$1"
+  sudo install -m 0600 -o "$SERVICE_USER" "$tmp" "$1"
   rm -f "$tmp"
 }
 
@@ -28,10 +34,11 @@ put() {
 quote() { printf "'%s'" "${1//\'/}"; }
 
 start() {
-  local MONGODB_URI="" SHOWCASE_EMBEDDING=auto VOYAGE_API_KEY="" VOYAGE_MODEL=voyage-4 line
+  local MONGODB_URI="" MONGODB_ADMIN_URI="" SHOWCASE_EMBEDDING=auto VOYAGE_API_KEY="" VOYAGE_MODEL=voyage-4 line
   while IFS= read -r line || [[ -n "$line" ]]; do
     case "$line" in
       MONGODB_URI=*) MONGODB_URI=${line#*=} ;;
+      MONGODB_ADMIN_URI=*) MONGODB_ADMIN_URI=${line#*=} ;;
       SHOWCASE_EMBEDDING=*) SHOWCASE_EMBEDDING=${line#*=} ;;
       VOYAGE_API_KEY=*) VOYAGE_API_KEY=${line#*=} ;;
       VOYAGE_MODEL=*) VOYAGE_MODEL=${line#*=} ;;
@@ -39,10 +46,18 @@ start() {
     esac
   done
   [[ -n "$MONGODB_URI" ]] || { echo "quickstart: MONGODB_URI missing on stdin" >&2; exit 1; }
+  MONGODB_ADMIN_URI=${MONGODB_ADMIN_URI:-$MONGODB_URI}
+
+  if ! id "$SERVICE_USER" >/dev/null 2>&1; then
+    sudo useradd --system --no-create-home --shell /sbin/nologin "$SERVICE_USER"
+  fi
   sudo install -d -m 0755 "$ETC" "$UNITS"
+  # The service user reads the bundle and owns its own working directory.
+  sudo chmod 0755 "$ROOT"
+  sudo install -d -m 0750 -o "$SERVICE_USER" "$ROOT/run/cfg-quickstart"
 
   echo "schema and the visibility search index"
-  bash "$(dirname "$0")/server.sh" schema atlas-search temporal
+  SCHEMA_URI="$MONGODB_ADMIN_URI" bash "$(dirname "$0")/server.sh" schema atlas-search temporal
 
   local addr; addr=$(hostname -I 2>/dev/null | awk '{print $1}' || true); addr=${addr:-127.0.0.1}
   {
@@ -72,7 +87,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=$ME
+User=$SERVICE_USER
 EnvironmentFile=$ETC/temporal.env
 ExecStart=/bin/bash $ROOT/examples/e2e/scripts/run-native-server.sh
 Restart=always
@@ -89,7 +104,7 @@ After=temporal.service
 Wants=temporal.service
 
 [Service]
-User=$ME
+User=$SERVICE_USER
 EnvironmentFile=$ETC/showcase.env
 ExecStart=$ROOT/bin/showcase worker
 Restart=always
@@ -107,8 +122,10 @@ UNIT
     sleep 1
   done
   echo "showcase: namespace, search attributes, ticket indexes, seed tickets, schedule"
-  # shellcheck disable=SC1091 # written above
-  (set -a; . "$ETC/showcase.env"; set +a; "$ROOT/bin/showcase" setup)
+  # Index creation needs the admin credential; it lives only in this
+  # process's environment.
+  # shellcheck disable=SC1090 # written above
+  (set -a; . <(sudo cat "$ETC/showcase.env"); set +a; MONGODB_URI="$MONGODB_ADMIN_URI" "$ROOT/bin/showcase" setup)
   sudo systemctl enable --now showcase-worker.service
 
   echo "Temporal UI"

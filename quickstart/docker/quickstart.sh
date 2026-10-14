@@ -43,6 +43,7 @@ up() {
   done
   compose logs --no-log-prefix showcase-setup | grep -E '✓' || true
   ok "ready"
+  printf '\033[33m!\033[0m development only: MongoDB has no authentication and Temporal accepts every request;\n  keep these ports on localhost (docs/operator/security.md)\n'
   status
   echo
   echo "Next: ./quickstart.sh tour"

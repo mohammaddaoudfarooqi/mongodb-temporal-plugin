@@ -14,7 +14,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 Q="$REPO/deploy/aws-qualify/scripts/qualify.sh"
-export QUALIFY_HOME="$HERE"
+export QUALIFY_HOME="${QUALIFY_HOME:-$HERE}"
 
 cmd=${1:-}; [[ -n "$cmd" ]] && shift
 case "$cmd" in
@@ -24,6 +24,9 @@ case "$cmd" in
     bash "$Q" start --profile quickstart
     cat <<'NEXT'
 
+Temporal runs without authentication: keep SSH access to yourself, and
+turn on mTLS and an authorizer before sharing it (docs/operator/security.md).
+
 Next:
   ./quickstart.sh tunnel   # then open http://localhost:8080/namespaces/support/workflows
   ./quickstart.sh tour     # a narrated demo that checks every feature
@@ -31,7 +34,7 @@ NEXT
     ;;
   tunnel) bash "$Q" tunnel --profile quickstart ;;
   tour) bash "$Q" ssh --profile quickstart -- \
-    'set -a; . /etc/temporal-quickstart/showcase.env; set +a; /opt/qualify/bin/showcase tour' ;;
+    "sudo -u temporal bash -c 'set -a; . /etc/temporal-quickstart/showcase.env; set +a; /opt/qualify/bin/showcase tour'" ;;
   status) bash "$Q" status --profile quickstart ;;
   ssh) bash "$Q" ssh --profile quickstart "$@" ;;
   down) bash "$Q" down --profile quickstart "$@" ;;

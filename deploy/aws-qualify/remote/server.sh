@@ -26,7 +26,9 @@ stop() {
 
 setup_schema() {
   local mode=$1 prefix=$2 attempts=${SCHEMA_ATTEMPTS:-60} db i uri
-  uri=$(cat "$ROOT/mongo.uri")
+  # SCHEMA_URI: an elevated, setup-only credential when the runtime one
+  # is least-privilege (the quickstart).
+  uri=${SCHEMA_URI:-$(cat "$ROOT/mongo.uri")}
   for db in "$prefix" "${prefix}_visibility"; do
     for ((i = 1; ; i++)); do
       if "$ROOT/bin/temporal-mongodb-tool" setup-schema --uri "$uri" --database "$db" \

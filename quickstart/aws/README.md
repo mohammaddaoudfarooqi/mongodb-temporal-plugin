@@ -17,6 +17,12 @@
 Nothing is exposed to the internet except SSH from the addresses you
 allow. The UI and gRPC are reached through an SSH tunnel.
 
+> **Temporal runs without authentication.** Anyone with the tunnel, or
+> with a shell on the host, can use every workflow. Keep SSH access
+> limited to you. Before giving anyone else access, turn on mTLS and an
+> authorizer
+> ([security guide](../../docs/operator/security.md#secure-the-temporal-frontend-first)).
+
 ```
  your machine ──SSH tunnel──▶ EC2 host ──VPC peering──▶ Atlas M10
   :8080 UI                     Temporal + UI             Temporal state, visibility (Atlas Search),
@@ -59,6 +65,9 @@ The showcase's semantic search uses Voyage AI embeddings:
 | no `VOYAGE_API_KEY` (default) | **Atlas automated embedding**: Atlas embeds the text with Voyage AI and queries pass plain text. This is a preview feature, billed per token on your Atlas invoice. |
 | `VOYAGE_API_KEY=…` | The showcase calls the Voyage AI API itself and stores the vectors. |
 
+Either way, **ticket text is sent to Voyage AI**. The showcase is for
+demo data only; don't load real customer tickets into it.
+
 ## Cost
 
 About **$0.20 per hour** while it runs: an Atlas M10 (about $0.08/h),
@@ -78,6 +87,17 @@ left. If your AWS credentials have expired, refresh them in `.env`
 first.
 
 ## Security notes
+
+- Two database users are created:
+  - an admin user that sets up the schema and indexes once and is never
+    stored on the host;
+  - a runtime user with `readWrite` on the Temporal and showcase
+    databases only, which is all the services hold.
+- Temporal and the showcase worker run as a dedicated `temporal` system
+  user (no login shell, no sudo).
+- `.run/` and `deploy/aws-qualify/terraform/terraform.tfstate.d/` hold
+  generated credentials. Keep them private, and don't sync them.
+  `down` deletes the database users.
 
 - `.env`, `.run/` and `artifacts/` are gitignored.
   - `.env` is read as plain text, never executed.

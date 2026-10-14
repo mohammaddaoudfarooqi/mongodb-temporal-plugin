@@ -18,4 +18,11 @@ output "mongodb_uri" {
   value     = local.mongodb_uri
   sensitive = true
 }
+
+# The setup-only credential (schema, indexes). Same as mongodb_uri on
+# test stacks.
+output "mongodb_admin_uri" {
+  value     = local.admin_uri
+  sensitive = true
+}
 output "vpc_id" { value = aws_vpc.main.id }

@@ -251,3 +251,32 @@ run "test_profiles_keep_the_self_terminate_cap" {
     error_message = "test stacks must keep the self-terminate cap"
   }
 }
+
+# The quickstart runs on a least-privilege runtime user; the admin user
+# only sets up the schema.
+run "quickstart_has_a_readwrite_runtime_user" {
+  command = plan
+  variables { profile = "quickstart" }
+  assert {
+    condition     = length(mongodbatlas_database_user.runtime) == 1
+    error_message = "the quickstart must create a separate runtime database user"
+  }
+  assert {
+    condition = alltrue([for r in mongodbatlas_database_user.runtime[0].roles :
+    r.role_name == "readWrite" && contains(["temporal", "temporal_visibility", "support"], r.database_name)])
+    error_message = "the runtime user may only readWrite the Temporal and showcase databases"
+  }
+  assert {
+    condition     = length(mongodbatlas_database_user.runtime[0].roles) == 3
+    error_message = "the runtime user needs exactly the three readWrite roles"
+  }
+}
+
+run "test_profiles_have_no_runtime_user" {
+  command = plan
+  variables { profile = "functional" }
+  assert {
+    condition     = length(mongodbatlas_database_user.runtime) == 0
+    error_message = "test stacks use the single admin user"
+  }
+}

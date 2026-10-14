@@ -802,6 +802,8 @@ cmd_start() {
   log "installing Temporal, the showcase worker and the Temporal UI on $host (embeddings: $emb)"
   {
     printf 'MONGODB_URI='; tf output -raw mongodb_uri; printf '\n'
+    # Setup-only (schema, indexes); used once on the host, never stored.
+    printf 'MONGODB_ADMIN_URI='; tf output -raw mongodb_admin_uri; printf '\n'
     printf 'SHOWCASE_EMBEDDING=%s\nVOYAGE_MODEL=%s\nNUM_HISTORY_SHARDS=%s\n' "$emb" "${VOYAGE_MODEL:-voyage-4}" "$SHARDS"
     [[ -n "${VOYAGE_API_KEY:-}" ]] && printf 'VOYAGE_API_KEY=%s\n' "$VOYAGE_API_KEY"
     true

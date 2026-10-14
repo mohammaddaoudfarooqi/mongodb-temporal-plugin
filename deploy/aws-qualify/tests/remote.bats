@@ -229,10 +229,30 @@ SH
 quickstart_stubs() {
   S="$BATS_TEST_TMPDIR/sbin"; mkdir -p "$S"
   for t in systemctl docker dnf; do printf '#!/bin/sh\necho "%s $*" >> "%s/qs.calls"\n' "$t" "$BATS_TEST_TMPDIR" > "$S/$t"; chmod +x "$S/$t"; done
-  printf '#!/bin/sh\nexec "$@"\n' > "$S/sudo"; chmod +x "$S/sudo"
+  # sudo runs the command (dropping -u USER); install ignores -o/-g so
+  # tests can name a service user that does not exist on this machine.
+  cat > "$S/sudo" <<'SH'
+#!/bin/sh
+echo "sudo $*" >> "$QS_CALLS"
+if [ "$1" = -u ]; then shift 2; fi
+exec "$@"
+SH
+  cat > "$S/install" <<'SH'
+#!/bin/sh
+args=""; while [ $# -gt 0 ]; do case "$1" in -o|-g) shift 2 ;; *) args="$args '$1'"; shift ;; esac; done
+eval "exec /usr/bin/install $args"
+SH
+  cat > "$S/useradd" <<SH
+#!/bin/sh
+echo "useradd \$*" >> "$BATS_TEST_TMPDIR/qs.calls"
+SH
+  printf '#!/bin/sh\necho "chown $*" >> "%s/qs.calls"\n' "$BATS_TEST_TMPDIR" > "$S/chown"
+  chmod +x "$S/sudo" "$S/install" "$S/useradd" "$S/chown"
+  export QS_CALLS="$BATS_TEST_TMPDIR/qs.calls" QS_SERVICE_USER=qs-nonexistent-user
   cat > "$R/bin/showcase" <<SH
 #!/bin/sh
-echo "showcase \$* MONGODB_URI=\${MONGODB_URI:+set} EMB=\$SHOWCASE_EMBEDDING" >> "$BATS_TEST_TMPDIR/qs.calls"
+case "\$MONGODB_URI" in *ADMIN*) u=admin ;; "") u="" ;; *) u=set ;; esac
+echo "showcase \$* MONGODB_URI=\$u EMB=\$SHOWCASE_EMBEDDING" >> "$BATS_TEST_TMPDIR/qs.calls"
 SH
   chmod +x "$R/bin/showcase"
   cat > "$R/examples/e2e/scripts/run-native-server.sh" <<'SH'
@@ -261,3 +281,18 @@ s=socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bi
   grep -q "setup-atlas-search" "$BATS_TEST_TMPDIR/tool.calls"
 }
 
+
+@test "quickstart start runs services as a dedicated user and never stores the admin URI" {
+  fake_tool 0; quickstart_stubs
+  printf 'MONGODB_URI=mongodb+srv://rt:RUNTIMEPW@h/\nMONGODB_ADMIN_URI=mongodb+srv://ad:ADMINPW@h/\nSHOWCASE_EMBEDDING=auto\n' |
+    bash "$REMOTE/quickstart.sh" start
+  kill "$LISTENER" 2>/dev/null || true
+  grep -q "useradd --system .*qs-nonexistent-user" "$BATS_TEST_TMPDIR/qs.calls"
+  grep -q "^User=qs-nonexistent-user$" "$QS_SYSTEMD_DIR/temporal.service"
+  grep -q "^User=qs-nonexistent-user$" "$QS_SYSTEMD_DIR/showcase-worker.service"
+  grep -q RUNTIMEPW "$QS_ETC/temporal.env"
+  grep -q RUNTIMEPW "$QS_ETC/showcase.env"
+  ! grep -rq ADMINPW "$QS_ETC" "$QS_SYSTEMD_DIR" "$R"
+  grep -q "setup-schema --uri mongodb+srv://ad:ADMINPW@h/" "$BATS_TEST_TMPDIR/tool.calls"
+  grep -q "showcase setup MONGODB_URI=admin" "$BATS_TEST_TMPDIR/qs.calls"
+}

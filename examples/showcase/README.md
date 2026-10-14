@@ -43,6 +43,10 @@ MongoDB gives you. **One cluster** does three jobs:
 Without `SHOWCASE_EMBEDDING`, the mode is `voyage` when `VOYAGE_API_KEY`
 is set, and `none` otherwise.
 
+**`auto` and `voyage` send ticket text to Voyage AI**, a third party:
+through Atlas in `auto` mode, directly in `voyage` mode. The showcase
+is for demo data; use `none` if no text may leave your deployment.
+
 ## Run it
 
 The quickest way is a [quickstart](../../quickstart), which starts

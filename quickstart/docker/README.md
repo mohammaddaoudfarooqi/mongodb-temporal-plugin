@@ -11,6 +11,12 @@ One command starts a complete local stack:
 - **Temporal Web UI**.
 - **The showcase**, a support desk (see [`examples/showcase`](../../examples/showcase)).
 
+> **Development only.** MongoDB runs without authentication, and the
+> Temporal frontend and UI accept every request, so every port binds to
+> `127.0.0.1`. Don't publish these ports or run this stack on a shared
+> machine. To run Temporal for others, follow the
+> [security guide](../../docs/operator/security.md).
+
 ## Requirements
 
 Docker with Compose v2, about 4 GB of free memory and 5 GB of disk.
@@ -35,8 +41,10 @@ Open the Temporal UI at <http://localhost:8080/namespaces/support/workflows>.
 
 ## Vector search
 
-Full-text search always works. For semantic (vector) search the showcase
-embeds text with [Voyage AI](https://www.voyageai.com/). Put your key in
+Full-text search always works, and nothing leaves your machine. For
+semantic (vector) search the showcase embeds ticket text with
+[Voyage AI](https://www.voyageai.com/). **That sends the ticket text to
+Voyage AI**, so use demo data only. Put your key in
 `quickstart/docker/.env`:
 
 ```bash
