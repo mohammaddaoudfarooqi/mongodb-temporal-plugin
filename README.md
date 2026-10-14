@@ -46,11 +46,11 @@ through Temporal's extension points:
     replica set.
 
 ```
-                 ┌──────────────────────────── MongoDB ────────────────────────────┐
- Temporal server │  temporal              temporal_visibility        your app data │
+                 ┌──────────────────────────── MongoDB ─────────────────────────────┐
+ Temporal server │  temporal              temporal_visibility        your app data  │
   + this plugin ─┼─▶ shards, executions,   visibility documents       (same cluster,│
                  │   history, tasks, …     + Atlas Search index       own indexes)  │
-                 └─────────────────────────────────────────────────────────────────┘
+                 └──────────────────────────────────────────────────────────────────┘
 ```
 
 Design choices worth knowing (the decision records are in
