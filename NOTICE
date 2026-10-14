@@ -1,0 +1,68 @@
+mongodb-temporal-plugin
+Copyright 2026 MongoDB, Inc. and mongodb-temporal-plugin contributors.
+
+This product includes software developed by the following projects. Their
+licenses are reproduced below in accordance with their terms.
+
+================================================================================
+Temporal Server (go.temporal.io/server)
+  https://github.com/temporalio/temporal
+  Copyright (c) 2020 Temporal Technologies Inc. and contributors.
+  Licensed under the MIT License.
+
+  This plugin depends on Temporal Server's public Go interfaces as a
+  module dependency.
+
+================================================================================
+MongoDB Go Driver (go.mongodb.org/mongo-driver/v2)
+  https://github.com/mongodb/mongo-go-driver
+  Copyright (c) 2017-present MongoDB, Inc.
+  Licensed under the Apache License, Version 2.0.
+
+================================================================================
+Temporal API (go.temporal.io/api)
+  https://github.com/temporalio/api
+  Copyright (c) 2020 Temporal Technologies Inc. and contributors.
+  Licensed under the MIT License.
+
+================================================================================
+OpenTelemetry Go (go.opentelemetry.io/otel)
+  https://github.com/open-telemetry/opentelemetry-go
+  Copyright The OpenTelemetry Authors.
+  Licensed under the Apache License, Version 2.0.
+
+================================================================================
+testify (github.com/stretchr/testify) — test-only
+  https://github.com/stretchr/testify
+  Copyright (c) 2012-2020 Mat Ryer, Tyler Bunnell and contributors.
+  Licensed under the MIT License.
+
+  Used to run Temporal's upstream persistence test suites against the
+  plugin's stores.
+
+================================================================================
+Protocol Buffers for Go (google.golang.org/protobuf)
+  https://github.com/protocolbuffers/protobuf-go
+  Copyright (c) 2018 The Go Authors.
+  Licensed under the BSD 3-Clause License.
+
+================================================================================
+Testcontainers for Go (github.com/testcontainers/testcontainers-go) — test-only
+  https://github.com/testcontainers/testcontainers-go
+  Copyright (c) 2017-2019 Gianluca Arbezzano.
+  Licensed under the MIT License.
+
+  Used by integration tests to start MongoDB replica sets.
+
+================================================================================
+
+Indirect dependencies licensed under the Mozilla Public License 2.0
+(github.com/hashicorp/*, github.com/go-sql-driver/mysql) are pulled in
+transitively by go.temporal.io/server and are not modified or bundled in
+source form by this project. MPL-2.0 is file-level copyleft and is
+accepted as an exception to the Apache-2.0/MIT/BSD dependency policy for
+transitive dependencies of the Temporal server only.
+
+Additional dependencies are declared in go.mod. Their attribution follows the
+source license. Adding or upgrading a dependency updates go.mod, go.sum, and
+this file in the same pull request (CI enforces the three-file invariant).

@@ -1,0 +1,167 @@
+{
+  "name": "visibility_executions_search",
+  "collection": "visibility_executions",
+  "definition": {
+    "mappings": {
+      "dynamic": false,
+      "fields": {
+        "_id": {
+          "type": "token"
+        },
+        "namespace_id": [
+          {
+            "type": "token"
+          },
+          {
+            "type": "string",
+            "analyzer": "lucene.keyword"
+          }
+        ],
+        "run_id": [
+          {
+            "type": "token"
+          },
+          {
+            "type": "string",
+            "analyzer": "lucene.keyword"
+          }
+        ],
+        "workflow_id": [
+          {
+            "type": "token"
+          },
+          {
+            "type": "string",
+            "analyzer": "lucene.keyword"
+          }
+        ],
+        "workflow_type_name": [
+          {
+            "type": "token"
+          },
+          {
+            "type": "string",
+            "analyzer": "lucene.keyword"
+          }
+        ],
+        "task_queue": [
+          {
+            "type": "token"
+          },
+          {
+            "type": "string",
+            "analyzer": "lucene.keyword"
+          }
+        ],
+        "status": {
+          "type": "number"
+        },
+        "start_time": {
+          "type": "date"
+        },
+        "execution_time": {
+          "type": "date"
+        },
+        "close_time": {
+          "type": "date"
+        },
+        "history_length": {
+          "type": "number"
+        },
+        "history_size_bytes": {
+          "type": "number"
+        },
+        "state_transition_count": {
+          "type": "number"
+        },
+        "execution_duration_ns": {
+          "type": "number"
+        },
+        "parent_workflow_id": [
+          {
+            "type": "token"
+          },
+          {
+            "type": "string",
+            "analyzer": "lucene.keyword"
+          }
+        ],
+        "parent_run_id": [
+          {
+            "type": "token"
+          },
+          {
+            "type": "string",
+            "analyzer": "lucene.keyword"
+          }
+        ],
+        "root_workflow_id": [
+          {
+            "type": "token"
+          },
+          {
+            "type": "string",
+            "analyzer": "lucene.keyword"
+          }
+        ],
+        "root_run_id": [
+          {
+            "type": "token"
+          },
+          {
+            "type": "string",
+            "analyzer": "lucene.keyword"
+          }
+        ],
+        "temporal_namespace_division": [
+          {
+            "type": "token"
+          },
+          {
+            "type": "string",
+            "analyzer": "lucene.keyword"
+          }
+        ],
+        "search_attributes": {
+          "type": "document",
+          "dynamic": {
+            "typeSet": "search_attribute_values"
+          }
+        },
+        "archetype_id": {
+          "type": "number"
+        }
+      }
+    },
+    "typeSets": [
+      {
+        "name": "search_attribute_values",
+        "types": [
+          {
+            "type": "token"
+          },
+          {
+            "type": "string",
+            "analyzer": "lucene.keyword",
+            "multi": {
+              "text": {
+                "type": "string",
+                "analyzer": "lucene.standard"
+              }
+            }
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "date"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      }
+    ]
+  },
+  "synonymMappings": []
+}

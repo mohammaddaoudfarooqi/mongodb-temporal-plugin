@@ -1,0 +1,127 @@
+# Quickstart: Temporal on MongoDB 8.2 with full-text and vector search,
+# all local. Run it with ./quickstart.sh up (see README.md).
+#
+#   mongodb          MongoDB 8.2 with search (mongodb-atlas-local): one
+#                    replica set serving Temporal's persistence, Temporal
+#                    visibility through Atlas Search, and the showcase's
+#                    tickets with full-text and vector indexes.
+#   schema-init      creates the plugin's schema and the visibility search index.
+#   temporal         Temporal server with the MongoDB plugin (visibility: atlas-search).
+#   temporal-ui      Temporal Web UI on http://localhost:${TEMPORAL_UI_PORT:-8080}.
+#   showcase-setup   registers the "support" namespace, its search attributes,
+#                    the ticket indexes, seed tickets and the SLA schedule.
+#   showcase-worker  runs the support-desk workflows.
+#
+# Every port binds to 127.0.0.1: MongoDB runs without authentication.
+
+name: temporal-mongodb-quickstart
+
+x-mongo-uri: &mongo-uri "mongodb://mongodb:27017/?directConnection=true"
+
+services:
+  mongodb:
+    image: mongodb/mongodb-atlas-local:8.2
+    hostname: mongodb
+    ports:
+      - "127.0.0.1:${MONGO_PORT:-27017}:27017"
+    volumes:
+      - mongo-data:/data/db
+      - mongo-config:/data/configdb
+      - mongot-data:/data/mongot
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/runner", "healthcheck"]
+      interval: 5s
+      timeout: 10s
+      retries: 60
+      start_period: 20s
+
+  schema-init:
+    image: ${PLUGIN_IMAGE:-temporal-mongodb-plugin:quickstart}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    restart: "no"
+    environment:
+      MONGO_URI: *mongo-uri
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        set -e
+        for db in temporal temporal_visibility; do
+          temporal-mongodb-tool setup-schema --uri "$$MONGO_URI" --database "$$db" \
+            --schema-dir /etc/temporal-mongodb/schema/versioned --num-history-shards 4
+        done
+        temporal-mongodb-tool setup-atlas-search --uri "$$MONGO_URI" --database temporal_visibility \
+          --atlas-schema-dir /etc/temporal-mongodb/schema/atlas_search --timeout 600
+        echo "schema and visibility search index ready"
+
+  temporal:
+    image: ${PLUGIN_IMAGE:-temporal-mongodb-plugin:quickstart}
+    depends_on:
+      schema-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${TEMPORAL_PORT:-7233}:7233"
+    environment:
+      TEMPORAL_MONGO_URI: *mongo-uri
+      TEMPORAL_VISIBILITY_MODE: atlas-search
+      MONGO_HEALTH_URI: *mongo-uri
+      MONGO_HEALTH_DB: temporal
+    volumes:
+      - ../../deploy/config:/etc/temporal/config:ro
+    entrypoint: ["/sbin/tini", "--", "sh", "-c"]
+    command:
+      - |
+        set -e
+        mkdir -p /tmp/temporal-config/dynamicconfig
+        sh /etc/temporal/config/render-config.sh /etc/temporal/config/development.yaml /tmp/temporal-config/development.yaml
+        cp /etc/temporal/config/dynamicconfig/development.yaml /tmp/temporal-config/dynamicconfig/development.yaml
+        exec /usr/local/bin/temporal-mongodb-server --start --config /tmp/temporal-config \
+          --env development --services history,matching,frontend,worker
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "7233"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 20s
+
+  temporal-ui:
+    image: temporalio/ui:${TEMPORAL_UI_VERSION:-2.37.4}
+    depends_on:
+      temporal:
+        condition: service_healthy
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${TEMPORAL_UI_PORT:-8080}:8080"
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_DEFAULT_NAMESPACE: support
+
+  showcase-setup:
+    image: ${SHOWCASE_IMAGE:-temporal-mongodb-showcase:quickstart}
+    depends_on:
+      temporal:
+        condition: service_healthy
+    restart: "no"
+    environment: &showcase-env
+      TEMPORAL_ADDRESS: temporal:7233
+      MONGODB_URI: *mongo-uri
+      SHOWCASE_EMBEDDING: ${SHOWCASE_EMBEDDING:-}
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
+      VOYAGE_MODEL: ${VOYAGE_MODEL:-voyage-4}
+    command: ["setup"]
+
+  showcase-worker:
+    image: ${SHOWCASE_IMAGE:-temporal-mongodb-showcase:quickstart}
+    depends_on:
+      showcase-setup:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    environment: *showcase-env
+    command: ["worker"]
+
+volumes:
+  mongo-data:
+  mongo-config:
+  mongot-data:

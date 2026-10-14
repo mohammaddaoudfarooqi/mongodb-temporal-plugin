@@ -1,0 +1,14 @@
+#!/bin/sh
+# commit-msg — enforce DCO sign-off locally.
+#
+# Runs after the commit message is written. Fails the commit if the message
+# does not contain a Signed-off-by line. Matches the CI rule so contributors
+# catch the problem before pushing.
+
+msg_file="$1"
+if ! grep -q '^Signed-off-by: ' "$msg_file"; then
+  echo "commit-msg: missing Signed-off-by line."
+  echo "Use 'git commit -s' to add it automatically, or append it by hand."
+  exit 1
+fi
+exit 0

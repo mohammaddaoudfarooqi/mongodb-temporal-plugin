@@ -1,0 +1,10 @@
+# Credentials and per-run state never leave the operator's machine.
+.env
+.run/
+artifacts/
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/tfplan
+terraform/*.auto.tfvars
+terraform/terraform.tfstate.d/

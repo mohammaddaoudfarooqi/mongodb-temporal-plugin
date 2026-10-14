@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0.0",
+  "collections": [
+    { "name": "shards" },
+    { "name": "namespaces" },
+    { "name": "namespace_metadata" },
+    { "name": "cluster_metadata" },
+    { "name": "cluster_membership" },
+    { "name": "executions" },
+    { "name": "current_executions" },
+    { "name": "history_nodes" },
+    { "name": "history_trees" },
+    { "name": "history_tasks" },
+    { "name": "replication_dlq" },
+    { "name": "task_queues" },
+    { "name": "tasks" },
+    { "name": "task_queue_user_data" },
+    { "name": "build_id_to_task_queue" },
+    { "name": "nexus_endpoints" },
+    { "name": "nexus_endpoints_table" },
+    { "name": "legacy_queues" },
+    { "name": "legacy_queue_messages" },
+    { "name": "legacy_dlq_metadata" },
+    { "name": "legacy_dlq_messages" },
+    { "name": "v2_queues" },
+    { "name": "v2_messages" },
+    { "name": "visibility_executions" },
+    { "name": "visibility_search_attributes" }
+  ]
+}

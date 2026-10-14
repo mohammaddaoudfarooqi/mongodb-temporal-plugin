@@ -1,0 +1,25 @@
+#!/bin/sh
+# pre-commit — local mirror of the CI guard lints.
+#
+# Install with `scripts/install-hooks.sh`. Runs `make lint` (and, in the
+# maintainers' repository where internal.mk exists, `make provenance`).
+# DCO sign-off is checked by the commit-msg hook (scripts/commit-msg).
+
+set -e
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+
+out=$(mktemp)
+if ! make lint >"$out" 2>&1; then
+  cat "$out"; rm -f "$out"
+  echo "pre-commit: make lint failed"
+  exit 1
+fi
+if [ -f internal.mk ] && ! make provenance >"$out" 2>&1; then
+  cat "$out"; rm -f "$out"
+  echo "pre-commit: make provenance failed"
+  exit 1
+fi
+rm -f "$out"
+exit 0

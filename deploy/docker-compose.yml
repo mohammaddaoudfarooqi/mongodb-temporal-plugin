@@ -1,0 +1,176 @@
+# One-command local stack for the MongoDB Temporal plugin.
+#
+# Services:
+#   mongo           — MongoDB 8.0 community replica set (rs0, single-node).
+#   mongo-init      — Runs `rs.initiate()` then exits. Other services
+#                     gate on its success.
+#   schema-init     — Runs `temporal-mongodb-tool setup-schema` against
+#                     both the default and visibility databases, then exits.
+#   temporal        — temporal-mongodb-server (Temporal with the plugin
+#                     wired in), exposed on 7233 (gRPC).
+#   temporal-ui     — Temporal Web UI, exposed on 8080.
+#
+# Profiles:
+#   "local" (default) — spins up local Mongo 8.0 replica set.
+#   "atlas"           — skips local Mongo, uses TEMPORAL_MONGO_URI.
+#                       LINUX ONLY. Docker Desktop (Mac/Windows) corrupts
+#                       TCP connections to Atlas. See deploy/README.md.
+#
+# Env inputs (see deploy.sh / .env.example):
+#   TEMPORAL_MONGO_URI          — connection string (default: mongodb://mongo:27017/?replicaSet=rs0).
+#   TEMPORAL_VISIBILITY_MODE    — "aggregation" (default) or "atlas-search" (Atlas only).
+#   PLUGIN_IMAGE_TAG            — image tag built by deploy.sh (default: temporal-mongodb-plugin:local).
+#
+# IMPORTANT: Do NOT use directConnection=true with replicaSet= in the URI.
+# The MongoDB Go driver v2 cannot reconcile these options and will fail with
+# "ReplicaSetNoPrimary" on startup.
+
+services:
+    # --- Self-hosted MongoDB 8.0 (profile: default / local) ------------
+    mongo:
+        profiles: ["local", ""]
+        image: mongo:8.0
+        container_name: temporal-mongo
+        command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
+        ports:
+            # Host port defaults to 27017; override via MONGO_HOST_PORT
+            # in deploy/.env if that port is occupied on the host.
+            # Bound to localhost: this mongod runs without authentication.
+            - "127.0.0.1:${MONGO_HOST_PORT:-27017}:27017"
+        healthcheck:
+            test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+            interval: 5s
+            timeout: 5s
+            retries: 20
+        volumes:
+            - mongo-data:/data/db
+
+    mongo-init:
+        profiles: ["local", ""]
+        image: mongo:8.0
+        container_name: temporal-mongo-init
+        depends_on:
+            mongo:
+                condition: service_healthy
+        restart: "no"
+        entrypoint: ["bash", "-c"]
+        command:
+            - |
+                set -e
+                echo "rs.initiate()..."
+                mongosh --host mongo:27017 --quiet --eval '
+                    try {
+                        rs.status();
+                        print("replica set already initiated");
+                    } catch (e) {
+                        rs.initiate({
+                            _id: "rs0",
+                            members: [{ _id: 0, host: "mongo:27017" }]
+                        });
+                        while (rs.status().myState !== 1) { sleep(200); }
+                        print("replica set ready");
+                    }
+                '
+
+    # --- Schema install (both profiles) -------------------------------
+    schema-init:
+        image: ${PLUGIN_IMAGE_TAG:-temporal-mongodb-plugin:local}
+        container_name: temporal-schema-init
+        depends_on:
+            mongo-init:
+                condition: service_completed_successfully
+                required: false
+        restart: "no"
+        dns:
+            - 8.8.8.8
+            - 8.8.4.4
+        entrypoint: ["sh", "-c"]
+        environment:
+            TEMPORAL_MONGO_URI: ${TEMPORAL_MONGO_URI:-mongodb://mongo:27017/?replicaSet=rs0}
+        command:
+            - |
+                set -e
+                echo "setup-schema: temporal database"
+                temporal-mongodb-tool setup-schema \
+                    --uri "$${TEMPORAL_MONGO_URI}" \
+                    --database temporal \
+                    --schema-dir /etc/temporal-mongodb/schema/versioned \
+                    --num-history-shards 4
+                echo "setup-schema: temporal_visibility database"
+                temporal-mongodb-tool setup-schema \
+                    --uri "$${TEMPORAL_MONGO_URI}" \
+                    --database temporal_visibility \
+                    --schema-dir /etc/temporal-mongodb/schema/versioned \
+                    --num-history-shards 4
+                echo "schema setup complete."
+
+    # --- Temporal server with MongoDB plugin --------------------------
+    temporal:
+        image: ${PLUGIN_IMAGE_TAG:-temporal-mongodb-plugin:local}
+        container_name: temporal-server
+        depends_on:
+            schema-init:
+                condition: service_completed_successfully
+        restart: unless-stopped
+        dns:
+            - 8.8.8.8
+            - 8.8.4.4
+        healthcheck:
+            test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:7243/api/v1/namespaces?pageSize=1 >/dev/null 2>&1"]
+            interval: 10s
+            timeout: 5s
+            retries: 30
+            start_period: 30s
+        ports:
+            # Override any conflict via deploy/.env (see .env.example):
+            # TEMPORAL_GRPC_PORT, TEMPORAL_HTTP_PORT.
+            - "${TEMPORAL_GRPC_PORT:-7233}:7233"
+            - "${TEMPORAL_HTTP_PORT:-7243}:7243"
+        environment:
+            TEMPORAL_MONGO_URI: ${TEMPORAL_MONGO_URI:-mongodb://mongo:27017/?replicaSet=rs0}
+            TEMPORAL_VISIBILITY_MODE: ${TEMPORAL_VISIBILITY_MODE:-aggregation}
+            MONGO_HEALTH_URI: ${TEMPORAL_MONGO_URI:-mongodb://mongo:27017/?replicaSet=rs0}
+            MONGO_HEALTH_DB: temporal
+        volumes:
+            - ./config:/etc/temporal/config:ro
+        entrypoint: ["/sbin/tini", "--", "sh", "-c"]
+        command:
+            - |
+                set -e
+                # Expand the env vars into the YAML. Temporal's config
+                # loader does not do env substitution itself; we render
+                # the final config on start. render-config.sh escapes the
+                # values so URIs containing &, | or \ survive intact.
+                mkdir -p /tmp/temporal-config/dynamicconfig
+                sh /etc/temporal/config/render-config.sh \
+                    /etc/temporal/config/development.yaml \
+                    /tmp/temporal-config/development.yaml
+                cp /etc/temporal/config/dynamicconfig/development.yaml /tmp/temporal-config/dynamicconfig/development.yaml
+                exec /usr/local/bin/temporal-mongodb-server \
+                    --start \
+                    --config /tmp/temporal-config \
+                    --env development \
+                    --services history,matching,frontend,worker
+
+    # --- Temporal Web UI ---------------------------------------------
+    temporal-ui:
+        image: temporalio/ui:latest
+        container_name: temporal-ui
+        depends_on:
+            - temporal
+        restart: unless-stopped
+        ports:
+            # Override the Web UI host port via TEMPORAL_UI_PORT.
+            - "${TEMPORAL_UI_PORT:-8080}:8080"
+        environment:
+            TEMPORAL_ADDRESS: temporal:7233
+            TEMPORAL_CORS_ORIGINS: http://localhost:3000
+            TEMPORAL_UI_PORT: 8080
+            # The stock UI defaults to the `default` namespace and shows
+            # "No Namespaces Found" when that doesn't exist. Point it at
+            # a namespace that IS registered so the first render is
+            # meaningful. Override via TEMPORAL_UI_DEFAULT_NAMESPACE.
+            TEMPORAL_DEFAULT_NAMESPACE: ${TEMPORAL_UI_DEFAULT_NAMESPACE:-temporal-system}
+
+volumes:
+    mongo-data:

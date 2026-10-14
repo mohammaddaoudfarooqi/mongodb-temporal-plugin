@@ -1,0 +1,394 @@
+{
+  "schema_version": "1.1.0",
+  "indexes": [
+    {
+      "collection": "shards",
+      "name": "shards_shard_id_unique",
+      "keys": [
+        {
+          "field": "shard_id",
+          "order": 1
+        }
+      ],
+      "unique": true
+    },
+    {
+      "collection": "namespaces",
+      "name": "namespaces_name_unique",
+      "keys": [
+        {
+          "field": "name",
+          "order": 1
+        }
+      ],
+      "unique": true
+    },
+    {
+      "collection": "cluster_membership",
+      "name": "membership_record_expiry_ttl",
+      "keys": [
+        {
+          "field": "record_expiry",
+          "order": 1
+        }
+      ],
+      "ttl": {
+        "expire_after_seconds": 0
+      }
+    },
+    {
+      "collection": "cluster_membership",
+      "name": "membership_role_heartbeat",
+      "keys": [
+        {
+          "field": "role",
+          "order": 1
+        },
+        {
+          "field": "last_heartbeat",
+          "order": -1
+        }
+      ]
+    },
+    {
+      "collection": "executions",
+      "name": "executions_shard_ns_wf_run",
+      "keys": [
+        {
+          "field": "shard_id",
+          "order": 1
+        },
+        {
+          "field": "namespace_id",
+          "order": 1
+        },
+        {
+          "field": "workflow_id",
+          "order": 1
+        },
+        {
+          "field": "run_id",
+          "order": 1
+        }
+      ]
+    },
+    {
+      "collection": "history_nodes",
+      "name": "history_nodes_tree_branch_node",
+      "keys": [
+        {
+          "field": "tree_id",
+          "order": 1
+        },
+        {
+          "field": "branch_id",
+          "order": 1
+        },
+        {
+          "field": "node_id",
+          "order": 1
+        }
+      ]
+    },
+    {
+      "collection": "history_tasks",
+      "name": "history_tasks_shard_cat_fire_task",
+      "keys": [
+        {
+          "field": "shard_id",
+          "order": 1
+        },
+        {
+          "field": "category_id",
+          "order": 1
+        },
+        {
+          "field": "fire_time",
+          "order": 1
+        },
+        {
+          "field": "task_id",
+          "order": 1
+        }
+      ]
+    },
+    {
+      "collection": "replication_dlq",
+      "name": "replication_dlq_shard_src_task",
+      "keys": [
+        {
+          "field": "shard_id",
+          "order": 1
+        },
+        {
+          "field": "source_cluster_name",
+          "order": 1
+        },
+        {
+          "field": "task_id",
+          "order": 1
+        }
+      ]
+    },
+    {
+      "collection": "tasks",
+      "name": "tasks_ns_tq_type_sub_id",
+      "keys": [
+        {
+          "field": "namespace_id",
+          "order": 1
+        },
+        {
+          "field": "task_queue",
+          "order": 1
+        },
+        {
+          "field": "task_type",
+          "order": 1
+        },
+        {
+          "field": "subqueue",
+          "order": 1
+        },
+        {
+          "field": "task_id",
+          "order": 1
+        }
+      ]
+    },
+    {
+      "collection": "tasks",
+      "name": "tasks_expiry_ttl",
+      "keys": [
+        {
+          "field": "expiry_time",
+          "order": 1
+        }
+      ],
+      "ttl": {
+        "expire_after_seconds": 0
+      },
+      "partial_filter": {
+        "expiry_time": {
+          "$gt": {
+            "$date": "1970-01-01T00:00:00Z"
+          }
+        }
+      }
+    },
+    {
+      "collection": "build_id_to_task_queue",
+      "name": "build_id_ns_bid",
+      "keys": [
+        {
+          "field": "namespace_id",
+          "order": 1
+        },
+        {
+          "field": "build_id",
+          "order": 1
+        }
+      ]
+    },
+    {
+      "collection": "legacy_queue_messages",
+      "name": "legacy_queue_type_mid",
+      "keys": [
+        {
+          "field": "queue_type",
+          "order": 1
+        },
+        {
+          "field": "message_id",
+          "order": 1
+        }
+      ]
+    },
+    {
+      "collection": "legacy_dlq_messages",
+      "name": "legacy_dlq_type_mid",
+      "keys": [
+        {
+          "field": "queue_type",
+          "order": 1
+        },
+        {
+          "field": "message_id",
+          "order": 1
+        }
+      ]
+    },
+    {
+      "collection": "v2_messages",
+      "name": "v2_messages_type_name_mid",
+      "keys": [
+        {
+          "field": "type",
+          "order": 1
+        },
+        {
+          "field": "name",
+          "order": 1
+        },
+        {
+          "field": "mid",
+          "order": 1
+        }
+      ]
+    },
+    {
+      "collection": "visibility_executions",
+      "name": "visibility_ns_id",
+      "keys": [
+        {
+          "field": "namespace_id",
+          "order": 1
+        },
+        {
+          "field": "_id",
+          "order": 1
+        }
+      ]
+    },
+    {
+      "collection": "visibility_executions",
+      "name": "visibility_ns_starttime",
+      "keys": [
+        {
+          "field": "namespace_id",
+          "order": 1
+        },
+        {
+          "field": "start_time",
+          "order": -1
+        }
+      ]
+    },
+    {
+      "collection": "visibility_executions",
+      "name": "visibility_ns_closetime",
+      "keys": [
+        {
+          "field": "namespace_id",
+          "order": 1
+        },
+        {
+          "field": "close_time",
+          "order": -1
+        }
+      ]
+    },
+    {
+      "collection": "visibility_executions",
+      "name": "visibility_ns_status_start",
+      "keys": [
+        {
+          "field": "namespace_id",
+          "order": 1
+        },
+        {
+          "field": "status",
+          "order": 1
+        },
+        {
+          "field": "start_time",
+          "order": -1
+        }
+      ]
+    },
+    {
+      "collection": "visibility_executions",
+      "name": "visibility_ns_archetype_id",
+      "keys": [
+        {
+          "field": "namespace_id",
+          "order": 1
+        },
+        {
+          "field": "archetype_id",
+          "order": 1
+        },
+        {
+          "field": "_id",
+          "order": 1
+        }
+      ]
+    },
+    {
+      "collection": "executions",
+      "name": "executions_shard_id",
+      "keys": [
+        {
+          "field": "shard_id",
+          "order": 1
+        },
+        {
+          "field": "_id",
+          "order": 1
+        }
+      ]
+    },
+    {
+      "collection": "history_trees",
+      "name": "history_trees_tree",
+      "keys": [
+        {
+          "field": "tree_id",
+          "order": 1
+        }
+      ]
+    },
+    {
+      "collection": "tasks",
+      "name": "tasks_ns_tq_type_sub_pass_id",
+      "keys": [
+        {
+          "field": "namespace_id",
+          "order": 1
+        },
+        {
+          "field": "task_queue",
+          "order": 1
+        },
+        {
+          "field": "task_type",
+          "order": 1
+        },
+        {
+          "field": "subqueue",
+          "order": 1
+        },
+        {
+          "field": "pass",
+          "order": 1
+        },
+        {
+          "field": "task_id",
+          "order": 1
+        }
+      ]
+    },
+    {
+      "collection": "history_nodes",
+      "name": "history_nodes_tree_branch_node_txn",
+      "keys": [
+        {
+          "field": "tree_id",
+          "order": 1
+        },
+        {
+          "field": "branch_id",
+          "order": 1
+        },
+        {
+          "field": "node_id",
+          "order": 1
+        },
+        {
+          "field": "txn_id",
+          "order": -1
+        }
+      ]
+    }
+  ]
+}

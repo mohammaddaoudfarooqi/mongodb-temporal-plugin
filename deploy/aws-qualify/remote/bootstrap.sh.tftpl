@@ -1,0 +1,20 @@
+#!/bin/bash
+# First boot on a qualification host. Holds no secrets: binaries, the
+# connection string and the test plan arrive later over SSH.
+set -euo pipefail
+exec > >(tee -a /var/log/qualify-boot.log) 2>&1
+echo "[$(date -Is)] qualify bootstrap start"
+
+%{ if shutdown_minutes > 0 ~}
+# Hard cap for test stacks: the instance terminates itself (shutdown
+# behaviour is terminate) even if teardown never runs.
+shutdown -h +${shutdown_minutes} "qualification max_hours reached"
+%{ endif ~}
+
+dnf install -y -q perl-interpreter tar gzip jq procps-ng >/dev/null
+cat > /etc/security/limits.d/90-qualify.conf <<'LIMITS'
+ec2-user soft nofile 65536
+ec2-user hard nofile 65536
+LIMITS
+install -d -o ec2-user -g ec2-user -m 0750 /opt/qualify
+echo "[$(date -Is)] == qualify bootstrap done =="

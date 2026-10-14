@@ -1,0 +1,258 @@
+# CI pipeline for mongodb-temporal-plugin.
+#
+# Gates (all PRs that change more than docs):
+#   - vet / staticcheck
+#   - unit tests
+#   - integration tests against a MongoDB 6.0 replica set
+#   - conformance suite against MongoDB 6.0
+#   - guard lints (make lint)
+#   - DCO sign-off check
+#
+# Scheduled (weekly) and manual (workflow_dispatch):
+#   - integration matrix (MongoDB 7.0, 8.0, 9.0)
+#   - Temporal compatibility matrix
+#   - conformance suite matrix (7.0, 8.0, 9.0)
+#   - Atlas live-cluster e2e (gated on secrets availability)
+#   - load test (M30-equivalent)
+#
+# Kept lean: no second run on push to main (the PR already ran the same
+# gates), superseded PR runs are cancelled, and docs-only changes skip CI.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+  schedule:
+    - cron: "0 6 * * 1" # 06:00 UTC every Monday
+  workflow_dispatch:
+    # Manual trigger — lets release engineers run the
+    # schedule-gated jobs (conformance-matrix, atlas-e2e, loadtest)
+    # without waiting for the nightly. The `if: github.event_name`
+    # checks on those jobs are relaxed to accept workflow_dispatch
+    # as an equivalent signal.
+
+permissions:
+  contents: read
+
+# A new push to a PR cancels that PR's run still in progress.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with: { go-version-file: go.mod }
+      - run: make vet
+      - run: |
+          go install honnef.co/go/tools/cmd/staticcheck@2026.2.1
+          make staticcheck
+      - run: make lint
+      # Maintainer-only checks live in internal.mk, which exists only in
+      # the internal repository.
+      - run: if [ -f internal.mk ]; then make provenance; fi
+
+  # Builds the binaries and the container image, then checks the image
+  # (non-root user, tini, HEALTHCHECK, OCI labels) and drives the
+  # containerised schema tool against a real MongoDB.
+  image:
+    runs-on: ubuntu-latest
+    needs: [unit]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with: { go-version-file: go.mod }
+      - run: make build
+      - run: docker build -t temporal-mongodb-plugin:ci .
+      - run: ci/scripts/docker-image-lint.sh temporal-mongodb-plugin:ci
+      - run: ci/scripts/docker-functional-e2e.sh temporal-mongodb-plugin:ci
+        env:
+          MONGO_VERSION: "6.0"
+
+  dco:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: { fetch-depth: 0 }
+      - name: Check DCO sign-off on all PR commits
+        if: github.event_name == 'pull_request'
+        run: |
+          base=${{ github.event.pull_request.base.sha }}
+          head=${{ github.event.pull_request.head.sha }}
+          missing=$(git log --format='%H %s' "$base..$head" \
+            | while read sha rest; do
+                if ! git log -1 --format='%B' "$sha" | grep -q '^Signed-off-by: '; then
+                  echo "$sha"; fi
+              done)
+          if [ -n "$missing" ]; then
+            echo "Commits missing Signed-off-by:"; echo "$missing"; exit 1
+          fi
+
+  unit:
+    runs-on: ubuntu-latest
+    needs: [static-analysis]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with: { go-version-file: go.mod }
+      - run: make unit
+      - run: make coverage-gate
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unit-coverage
+          path: coverage.out
+
+  integration:
+    runs-on: ubuntu-latest
+    needs: [unit]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with: { go-version-file: go.mod }
+      - run: make integration-coverage
+        env:
+          MONGO_VERSION: "6.0"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: integration-coverage
+          path: coverage-integration.out
+
+  # Release gate: combined unit+integration coverage >= 80%.
+  # Runs after both profile-emitting jobs so the merge script has both
+  # inputs. Unlike the unit-only gate, this one enforces the spec floor.
+  coverage-combined:
+    runs-on: ubuntu-latest
+    needs: [unit, integration]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with: { go-version-file: go.mod }
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: unit-coverage
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: integration-coverage
+      - run: make coverage-combined-gate
+
+  conformance-6:
+    runs-on: ubuntu-latest
+    needs: [integration]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with: { go-version-file: go.mod }
+      - run: make conformance
+        env:
+          MONGO_VERSION: "6.0"
+
+  integration-matrix:
+    # Runs the integration suite against 7.0, 8.0 and 9.0 on the weekly
+    # schedule and on manual dispatch; PRs run 6.0 only (integration).
+    # Run it by hand before a release with `gh workflow run CI`. Uses the
+    # MONGO_VERSION env var read by internal/testutil.MongoImage.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    needs: [unit]
+    strategy:
+      matrix:
+        mongo: ["7.0", "8.0", "9.0"]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with: { go-version-file: go.mod }
+      - run: make integration
+        env:
+          MONGO_VERSION: ${{ matrix.mongo }}
+
+  conformance-matrix:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        mongo: ["7.0", "8.0", "9.0"]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with: { go-version-file: go.mod }
+      - run: make conformance
+        env:
+          MONGO_VERSION: ${{ matrix.mongo }}
+
+  temporal-matrix:
+    # Temporal compatibility: the latest patch of the
+    # current and previous minors. Builds, vets, and runs the unit and
+    # integration tiers — the latter includes upstream's persistence
+    # suites as shipped by that release. 1.30 cannot be supported by
+    # this module line. Weekly and manual only.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    needs: [unit]
+    strategy:
+      fail-fast: false
+      matrix:
+        temporal: ["v1.31.3", "v1.32.1"]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with: { go-version-file: go.mod }
+      - run: ci/scripts/temporal-matrix.sh
+        env:
+          TEMPORAL_VERSION: ${{ matrix.temporal }}
+          GOTOOLCHAIN: auto
+          MONGO_VERSION: "8.0"
+
+  atlas-e2e:
+    # Scheduled live-cluster gate. The job runs only on
+    # `schedule` events so PRs do not consume Atlas capacity, and it
+    # skips cleanly (exit 0) if ATLAS_URI / ATLAS_DATABASE are not set.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: atlas-e2e
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with: { go-version-file: go.mod }
+      - run: ci/scripts/atlas-e2e.sh
+        env:
+          ATLAS_URI:         ${{ secrets.ATLAS_URI         }}
+          ATLAS_DATABASE:    ${{ secrets.ATLAS_DATABASE    }}
+          ATLAS_PUBLIC_KEY:  ${{ secrets.ATLAS_PUBLIC_KEY  }}
+          ATLAS_PRIVATE_KEY: ${{ secrets.ATLAS_PRIVATE_KEY }}
+          ATLAS_PROJECT_ID:  ${{ secrets.ATLAS_PROJECT_ID  }}
+
+  loadtest:
+    # Load-test harness. Runs on schedule only — the throughput target is
+    # aspirational so this job emits a p50/p95/p99 + STPS report for
+    # trend tracking rather than gating PRs. On CI hardware the
+    # numbers reflect plugin overhead, not Atlas M30+ capacity; the
+    # The target (500 STPS, p99 <= 50ms) is re-measured on
+    # Atlas by the release engineer. A regression in plugin overhead
+    # would still show up as a percentile spike relative to the
+    # prior nightly, which is the value this report adds.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    needs: [integration]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with: { go-version-file: go.mod }
+      - name: Run the load test
+        run: |
+          go test -tags=integration -run=TestLoad_UpdateWorkflow -timeout=10m \
+            ./internal/executionstore/ -v \
+            -args -loadtest.duration=30s -loadtest.concurrency=32
+        env:
+          PLUGIN_LOADTEST_REPORT: "1"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: loadtest-report
+          path: internal/executionstore/loadtest-report.json

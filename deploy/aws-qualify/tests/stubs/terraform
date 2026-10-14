@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Test stub: records argv (and stdin for ssh) in $CALLS, then runs the
+# per-test handler $STUB_FIXTURES/<tool>.sh if one exists.
+name=$(basename "$0")
+printf '%s %s\n' "$name" "$*" >> "$CALLS"
+if [ "$name" = ssh ] && [ ! -t 0 ]; then
+  cat >> "$CALLS.stdin"
+fi
+if [ -f "$STUB_FIXTURES/$name.sh" ]; then
+  # shellcheck disable=SC1090
+  . "$STUB_FIXTURES/$name.sh" "$@"
+  exit $?
+fi
+case "$name" in
+  go)  # create the -o output so later steps find it
+    prev=""; for a in "$@"; do [ "$prev" = "-o" ] && { mkdir -p "$(dirname "$a")"; : > "$a"; }; prev=$a; done ;;
+  git)
+    case "$1 $2" in
+      "worktree add") mkdir -p "${@: -2:1}" ;;
+      "rev-parse "*) echo 0123456789abcdef0123456789abcdef01234567 ;;
+    esac
+    for a in "$@"; do case "$a" in --output=*) : > "${a#--output=}" ;; esac; done ;;
+esac
+exit 0

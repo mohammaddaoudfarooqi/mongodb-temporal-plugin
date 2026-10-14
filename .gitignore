@@ -1,0 +1,31 @@
+# Build outputs
+/bin/
+/dist/
+*.test
+*.out
+coverage.*
+*.prof
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*~
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Go tooling
+vendor/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local testcontainers state
+.testcontainers/
+
+
+.claude/
