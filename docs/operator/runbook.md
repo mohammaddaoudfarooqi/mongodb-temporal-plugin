@@ -138,6 +138,20 @@ The cluster isn't an Atlas M10+ deployment. Either:
 - Move to an M10+ Atlas cluster, or
 - Change `visibilityMode` to `aggregation`.
 
+## MongoDB exits at start-up on a new Linux kernel
+
+**Symptom**: a self-hosted `mongod` (including the `mongo` Docker image)
+exits with code 1 and logs `MongoDB cannot start: Linux kernel versions
+6.19 and newer has a known incompatibility with this version of
+MongoDB`. The plugin then fails to connect.
+
+**Cause**: a MongoDB start-up guard, not the plugin. See
+[Self-hosted MongoDB on Linux kernel 6.19 or newer](deployment.md#self-hosted-mongodb-on-linux-kernel-619-or-newer).
+
+**Fix**: run MongoDB 9.0.4+ or 8.2 (or 8.0.35+ / 8.3.14+ once released)
+on that host, or run on a kernel older than 6.19. Check with
+`uname -r` and, on Ubuntu, `cat /proc/version_signature`.
+
 ## Escalation path
 
 Production-affecting bugs in the plugin: open a GitHub issue with

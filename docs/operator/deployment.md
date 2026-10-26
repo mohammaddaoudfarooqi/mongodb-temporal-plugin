@@ -31,6 +31,25 @@ application that exercises the plugin end to end against a live server.
 Standalone `mongod` is NOT supported (no transaction support). The plugin
 fails startup fast in that case.
 
+### Self-hosted MongoDB on Linux kernel 6.19 or newer
+
+Linux 6.19 changed `rseq` behaviour in a way that breaks the memory
+allocator in MongoDB 8.0 and later, so these releases refuse to start on
+affected kernels (SERVER-121912, SERVER-125742). Kernels 7.0.14+ and
+7.1+ restore the old behaviour, but some MongoDB releases misread
+Ubuntu's kernel version string (`7.0.0-…`) and still refuse
+(SERVER-136848). On Ubuntu 26.04, or Ubuntu 24.04 with the HWE kernel:
+
+| MongoDB | Starts |
+|---|---|
+| 7.0, 8.2 | yes |
+| 8.0 up to 8.0.34, 8.3 up to 8.3.13 | no: exits with "Linux kernel versions 6.19 and newer has a known incompatibility" |
+| 9.0.4 and later | yes |
+
+MongoDB lists 8.0.35 and 8.3.14 as the fixed 8.0 and 8.3 releases. Until
+you can run one of those, use 9.0.4+ or 8.2, or a host kernel older than
+6.19. Atlas is not affected: Atlas manages the host kernel.
+
 ## Steps
 
 ### 1. Provision the MongoDB cluster

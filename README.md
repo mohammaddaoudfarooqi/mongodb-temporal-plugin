@@ -67,11 +67,15 @@ Design choices worth knowing (the decision records are in
 | | Tested |
 |---|---|
 | Temporal server | 1.31 and 1.32 (latest patches) |
-| MongoDB | 6.0, 7.0, 8.0, 8.2 and 9.0 replica sets; Atlas M10 and larger |
-| Visibility `atlas-search` | Atlas M10+, MongoDB 8.2 with search (`mongodb-atlas-local`) |
+| MongoDB | 6.0, 7.0, 8.0, 8.2, 8.3 and 9.0 replica sets; Atlas M10 and larger |
+| Visibility `atlas-search` | Atlas M10+, MongoDB 8.2 and 8.3 with search (`mongodb-atlas-local`) |
 | Go | 1.26 |
 
 The upstream Temporal persistence test suites run against every store.
+
+Self-hosting on Linux kernel 6.19 or newer (for example Ubuntu 26.04)?
+Some MongoDB 8.0 and 8.3 releases refuse to start there; see
+[the kernel note](docs/operator/deployment.md#self-hosted-mongodb-on-linux-kernel-619-or-newer).
 
 ## Try it
 

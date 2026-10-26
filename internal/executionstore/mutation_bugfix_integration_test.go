@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	commonpb "go.temporal.io/api/common/v1"
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/serviceerror"
@@ -237,7 +239,6 @@ func TestUpdate_ShardStolenMidTxn_ShardOwnershipLost(t *testing.T) {
 
 	var wg sync.WaitGroup
 	var errA error
-	var doneA time.Time
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -245,7 +246,6 @@ func TestUpdate_ShardStolenMidTxn_ShardOwnershipLost(t *testing.T) {
 			ShardID: 1, RangeID: 1, Mode: persistence.UpdateWorkflowModeUpdateCurrent,
 			UpdateWorkflowMutation: mut,
 		})
-		doneA = time.Now()
 	}()
 	time.Sleep(700 * time.Millisecond) // A is now blocked inside its transaction
 	if err := shards.UpdateShard(ctx, &persistence.InternalUpdateShardRequest{
@@ -253,11 +253,20 @@ func TestUpdate_ShardStolenMidTxn_ShardOwnershipLost(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("UpdateShard: %v", err)
 	}
-	doneB := time.Now()
 	wg.Wait()
 
-	if errA == nil && doneA.After(doneB) {
-		t.Fatalf("stale owner committed %v after the shard was taken over", doneA.Sub(doneB))
+	// Order the two commits by their oplog timestamps, not by when the
+	// calls returned: the fence makes UpdateShard wait for A's commit, so
+	// both calls return within microseconds of each other.
+	if errA == nil {
+		// A is the last transaction on this database (create ran first).
+		txnTS := lastOplogEntry(t, db, bson.D{{Key: "op", Value: "c"},
+			{Key: "o.applyOps.ns", Value: bson.Regex{Pattern: "^" + db.Name() + `\.`}}})
+		takeoverTS := lastOplogEntry(t, db, bson.D{{Key: "op", Value: "u"},
+			{Key: "ns", Value: db.Name() + ".shards"}, {Key: "o2._id", Value: "shard:1"}})
+		if txnTS.After(takeoverTS) {
+			t.Fatalf("stale owner committed at %v, after the shard was taken over at %v", txnTS, takeoverTS)
+		}
 	}
 	if errA != nil {
 		var lost *persistence.ShardOwnershipLostError
@@ -265,6 +274,22 @@ func TestUpdate_ShardStolenMidTxn_ShardOwnershipLost(t *testing.T) {
 			t.Fatalf("stale owner failed with %T %v; want ShardOwnershipLostError", errA, errA)
 		}
 	}
+}
+
+// lastOplogEntry returns the timestamp of the newest oplog entry that
+// matches filter.
+func lastOplogEntry(t *testing.T, db *mongo.Database, filter bson.D) bson.Timestamp {
+	t.Helper()
+	var entry struct {
+		TS bson.Timestamp `bson:"ts"`
+	}
+	err := db.Client().Database("local").Collection("oplog.rs").
+		FindOne(context.Background(), filter, options.FindOne().SetSort(bson.D{{Key: "$natural", Value: -1}})).
+		Decode(&entry)
+	if err != nil {
+		t.Fatalf("oplog lookup %v: %v", filter, err)
+	}
+	return entry.TS
 }
 
 func TestUpdate_OverSizeBudget_TransactionSizeLimit(t *testing.T) {

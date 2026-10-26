@@ -26,6 +26,15 @@ Temporal API (go.temporal.io/api)
   Licensed under the MIT License.
 
 ================================================================================
+Temporal Go SDK (go.temporal.io/sdk)
+  https://github.com/temporalio/sdk-go
+  Copyright (c) 2020 Temporal Technologies Inc. All rights reserved.
+  Licensed under the MIT License.
+
+  Imported directly by the integration tests; Temporal Server also
+  depends on it.
+
+================================================================================
 OpenTelemetry Go (go.opentelemetry.io/otel)
   https://github.com/open-telemetry/opentelemetry-go
   Copyright The OpenTelemetry Authors.

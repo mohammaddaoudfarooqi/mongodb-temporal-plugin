@@ -11,7 +11,7 @@
 #   ci/scripts/docker-functional-e2e.sh <image-tag>
 #
 # Env:
-#   MONGO_VERSION       6.0 / 7.0 / 8.0 / 9.0 (for the container-based tier)
+#   MONGO_VERSION       6.0 / 7.0 / 8.0 / 8.2 / 8.3 / 9.0 (for the container-based tier)
 #   ATLAS_URI           full Atlas connection URI (skips Atlas tier if unset)
 #   NETWORK             Docker network name (default: tor-func)
 #   LOG_DIR             where to write per-backend logs (default: /tmp/tor_logs)
@@ -100,7 +100,7 @@ run_atlas_tier() {
     run_against "atlas" "$ATLAS_URI" "$db" "$out"
 }
 
-for v in 6.0 7.0 8.0 9.0; do
+for v in 6.0 7.0 8.0 8.2 8.3 9.0; do
     run_mongo_tier "$v"
 done
 run_atlas_tier
