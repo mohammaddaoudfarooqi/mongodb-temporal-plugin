@@ -163,7 +163,7 @@ status (if Search mode).
 
 ### Upgrading a two-database deployment
 
-Both stores now share one database by default (ADR-016). A deployment
+Both stores now share one database by default (ADR-011). A deployment
 whose config names its databases explicitly is unaffected: keep
 `database: temporal_visibility` on `mongo-visibility`.
 
