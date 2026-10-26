@@ -118,7 +118,7 @@ Two users are recommended:
 
 ### `temporal_runtime` (used by Temporal server)
 
-Required role: `readWrite` on the plugin's databases.
+Required role: `readWrite` on the plugin's database.
 
 ```javascript
 use temporal
@@ -126,11 +126,14 @@ db.createUser({
   user: "temporal_runtime",
   pwd: passwordPrompt(),
   roles: [
-    { role: "readWrite", db: "temporal" },
-    { role: "readWrite", db: "temporal_visibility" }
+    { role: "readWrite", db: "temporal" }
   ]
 })
 ```
+
+With [separate databases](deployment.md#optional-separate-databases),
+add the same role on the visibility database. That layout also lets you
+grant a reporting tool `read` on the visibility database alone.
 
 This role is deliberately narrow. It cannot create indexes, create
 collections, or modify cluster-wide settings. If you see a
@@ -140,8 +143,9 @@ indicates a schema drift — run `update-schema` under the elevated
 
 ### `temporal_admin` (used by `temporal-mongodb-tool` only)
 
-Required roles: `dbAdmin` on both plugin databases, plus
-`atlasAdmin` on the project when using Atlas Search.
+Required roles: `dbAdmin` on the plugin's database (each of them, with
+separate databases), plus `atlasAdmin` on the project when using Atlas
+Search.
 
 ```javascript
 use temporal
@@ -149,8 +153,7 @@ db.createUser({
   user: "temporal_admin",
   pwd: passwordPrompt(),
   roles: [
-    { role: "dbAdmin", db: "temporal" },
-    { role: "dbAdmin", db: "temporal_visibility" }
+    { role: "dbAdmin", db: "temporal" }
   ]
 })
 ```

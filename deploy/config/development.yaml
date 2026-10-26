@@ -19,7 +19,7 @@ persistence:
                 name: mongodb
                 options:
                     uri: ${TEMPORAL_MONGO_URI}
-                    database: temporal_visibility
+                    database: temporal
                     visibilityMode: ${TEMPORAL_VISIBILITY_MODE}
 
 global:

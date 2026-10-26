@@ -127,7 +127,7 @@ SH
   cat > "$STUB_FIXTURES/scp.sh" <<'SH'
 dst="${@: -1}"
 case "$*" in
-  *:/opt/qualify/results*) mkdir -p "$dst/phases"; echo '{"phase":"smoke-aggregation"}' > "$dst/phases/smoke-aggregation.json"; echo "ts,cpu_pct,mem_used_pct,server_rss_kb" > "$dst/samples.csv" ;;
+  *:/opt/qualify/results*) mkdir -p "$dst/phases"; echo '{"phase":"smoke-aggregation"}' > "$dst/phases/smoke-aggregation.json"; echo "ts,cpu_pct,mem_used_pct,server_rss_kb" > "$dst/samples.csv"; mkdir -p "$dst/profiles"; : > "$dst/profiles/heap-1.pb.gz"; echo "ts,goroutines" > "$dst/goroutines.csv" ;;
 esac
 SH
 }
@@ -227,6 +227,8 @@ SH
   grep -q 'smoke-aggregation' "$dir/meta.json"
   [ -f "$dir/phases/smoke-aggregation.json" ]
   [ -f "$dir/hosts/server-1/samples.csv" ]
+  [ -f "$dir/hosts/server-1/goroutines.csv" ]
+  [ -f "$dir/hosts/server-1/profiles/heap-1.pb.gz" ]
 }
 
 

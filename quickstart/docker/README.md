@@ -42,14 +42,20 @@ Open the Temporal UI at <http://localhost:8080/namespaces/support/workflows>.
 ## Vector search
 
 Full-text search always works, and nothing leaves your machine. For
-semantic (vector) search the showcase embeds ticket text with
-[Voyage AI](https://www.voyageai.com/). **That sends the ticket text to
-Voyage AI**, so use demo data only. Put your key in
+semantic (vector) search the showcase embeds ticket text with Voyage AI
+models through MongoDB's Embedding API (`ai.mongodb.com`). **That sends
+the ticket text to the API**, so use demo data only. Create a model API
+key in Atlas (**AI Model APIs → Model API Keys**) and put it in
 `quickstart/docker/.env`:
 
 ```bash
 VOYAGE_API_KEY=your-key
 ```
+
+A key scoped to a geography (`al-eu-…`, `al-us-…`) is sent to that
+geography's endpoint. To use another endpoint, set `VOYAGE_URL` to its
+full embeddings URL; for a key created on voyageai.com rather than in
+Atlas, that is `VOYAGE_URL=https://api.voyageai.com/v1/embeddings`.
 
 Then run `./quickstart.sh down -v && ./quickstart.sh up`, so the vector
 index is created with the right dimensions.

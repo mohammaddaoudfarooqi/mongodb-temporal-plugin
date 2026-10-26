@@ -180,3 +180,148 @@ func TestCompareVersions(t *testing.T) {
 		t.Error("non-numeric version accepted")
 	}
 }
+
+func latestManifests(t *testing.T) (*schema.Collections, *schema.Indexes) {
+	t.Helper()
+	latest, err := schema.LatestVersionedDir(repoRoot(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, err := schema.VersionedDir(repoRoot(t), latest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := schema.LoadCollections(filepath.Join(dir, "collections.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	idx, err := schema.LoadIndexes(filepath.Join(dir, "indexes.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c, idx
+}
+
+func names(c *schema.Collections) map[string]bool {
+	m := map[string]bool{}
+	for _, coll := range c.Collections {
+		m[coll.Name] = true
+	}
+	return m
+}
+
+// TestCollections_ForStores_SplitsCoreAndVisibility: a database that
+// holds one store gets only that store's collections, so the
+// two-database layout has no empty copies; "all" (one database) gets
+// every collection.
+func TestCollections_ForStores_SplitsCoreAndVisibility(t *testing.T) {
+	c, _ := latestManifests(t)
+	vis := names(c.ForStores(schema.StoresVisibility))
+	if len(vis) != 2 || !vis["visibility_executions"] || !vis["visibility_search_attributes"] {
+		t.Errorf("visibility collections = %v", vis)
+	}
+	core := names(c.ForStores(schema.StoresCore))
+	if core["visibility_executions"] || core["visibility_search_attributes"] || !core["executions"] || !core["shards"] {
+		t.Errorf("core collections = %v", core)
+	}
+	if len(core)+len(vis) != len(c.Collections) {
+		t.Errorf("core %d + visibility %d != %d collections", len(core), len(vis), len(c.Collections))
+	}
+	if all := c.ForStores(schema.StoresAll); len(all.Collections) != len(c.Collections) {
+		t.Errorf("all = %d collections, want %d", len(all.Collections), len(c.Collections))
+	}
+}
+
+// TestIndexes_ForCollections_KeepsOnlyThoseCollections: indexes follow
+// their collection into the store's database.
+func TestIndexes_ForCollections_KeepsOnlyThoseCollections(t *testing.T) {
+	c, idx := latestManifests(t)
+	vis := c.ForStores(schema.StoresVisibility)
+	got := idx.ForCollections(vis)
+	if len(got.Indexes) == 0 {
+		t.Fatal("no visibility indexes")
+	}
+	want := names(vis)
+	for _, i := range got.Indexes {
+		if !want[i.Collection] {
+			t.Errorf("index %s on %s kept for the visibility database", i.Name, i.Collection)
+		}
+	}
+	core := idx.ForCollections(c.ForStores(schema.StoresCore))
+	if len(core.Indexes)+len(got.Indexes) != len(idx.Indexes) {
+		t.Errorf("core %d + visibility %d != %d indexes", len(core.Indexes), len(got.Indexes), len(idx.Indexes))
+	}
+}
+
+func TestParseStores(t *testing.T) {
+	for in, want := range map[string]schema.Stores{"": schema.StoresAll, "all": schema.StoresAll, "core": schema.StoresCore, "visibility": schema.StoresVisibility} {
+		if got, err := schema.ParseStores(in); err != nil || got != want {
+			t.Errorf("ParseStores(%q) = %v, %v", in, got, err)
+		}
+	}
+	if _, err := schema.ParseStores("both"); err == nil {
+		t.Error("ParseStores accepted an unknown value")
+	}
+}
+
+// TestManifests_EveryCollectionHasAKnownStore covers every version, so
+// --stores works with --schema-version too.
+func TestManifests_EveryCollectionHasAKnownStore(t *testing.T) {
+	dirs, err := schema.ListVersionedDirs(repoRoot(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range dirs {
+		c, err := schema.LoadCollections(filepath.Join(repoRoot(t), "schema", "versioned", d, "collections.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, coll := range c.Collections {
+			want := "core"
+			if coll.Name == "visibility_executions" || coll.Name == "visibility_search_attributes" {
+				want = "visibility"
+			}
+			if coll.Store != want {
+				t.Errorf("%s: %s has store %q, want %q", d, coll.Name, coll.Store, want)
+			}
+		}
+	}
+}
+
+// TestLoadCollections_UnknownStore_Fails: a collection without a known
+// store would silently drop out of a filtered setup.
+func TestLoadCollections_UnknownStore_Fails(t *testing.T) {
+	for _, body := range []string{
+		`{"schema_version":"9.9.9","collections":[{"name":"x"}]}`,
+		`{"schema_version":"9.9.9","collections":[{"name":"x","store":"search"}]}`,
+	} {
+		p := filepath.Join(t.TempDir(), "collections.json")
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := schema.LoadCollections(p); err == nil {
+			t.Errorf("LoadCollections accepted %s", body)
+		}
+	}
+}
+
+// TestOtherStoreData: a single-store setup refuses a database whose
+// other store's collections hold documents (a combined database), but
+// not the empty copies an older two-database setup left behind.
+func TestOtherStoreData(t *testing.T) {
+	c, _ := latestManifests(t)
+	combined := map[string]int64{"executions": 10, "visibility_executions": 7}
+	if got := schema.OtherStoreData(c, schema.StoresVisibility, combined); len(got) != 1 || got[0] != "executions" {
+		t.Errorf("visibility on a combined database: %v", got)
+	}
+	if got := schema.OtherStoreData(c, schema.StoresCore, combined); len(got) != 1 || got[0] != "visibility_executions" {
+		t.Errorf("core on a combined database: %v", got)
+	}
+	legacy := map[string]int64{"executions": 0, "shards": 0, "visibility_executions": 7}
+	if got := schema.OtherStoreData(c, schema.StoresVisibility, legacy); len(got) != 0 {
+		t.Errorf("visibility on an old visibility database: %v", got)
+	}
+	if got := schema.OtherStoreData(c, schema.StoresAll, combined); len(got) != 0 {
+		t.Errorf("all: %v", got)
+	}
+}

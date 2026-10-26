@@ -263,12 +263,12 @@ run "quickstart_has_a_readwrite_runtime_user" {
   }
   assert {
     condition = alltrue([for r in mongodbatlas_database_user.runtime[0].roles :
-    r.role_name == "readWrite" && contains(["temporal", "temporal_visibility", "support"], r.database_name)])
+    r.role_name == "readWrite" && contains(["temporal", "support"], r.database_name)])
     error_message = "the runtime user may only readWrite the Temporal and showcase databases"
   }
   assert {
-    condition     = length(mongodbatlas_database_user.runtime[0].roles) == 3
-    error_message = "the runtime user needs exactly the three readWrite roles"
+    condition     = length(mongodbatlas_database_user.runtime[0].roles) == 2
+    error_message = "the runtime user needs exactly the two readWrite roles"
   }
 }
 

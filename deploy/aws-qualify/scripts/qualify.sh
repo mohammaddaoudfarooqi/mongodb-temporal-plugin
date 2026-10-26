@@ -676,6 +676,8 @@ cmd_collect() {
     mkdir -p "$dir/hosts/$name"
     if [[ -d "$tmp/phases" ]]; then cp "$tmp"/phases/*.json "$dir/phases/" 2>/dev/null || true; fi
     if [[ -f "$tmp/samples.csv" ]]; then cp "$tmp/samples.csv" "$dir/hosts/$name/"; fi
+    if [[ -f "$tmp/goroutines.csv" ]]; then cp "$tmp/goroutines.csv" "$dir/hosts/$name/"; fi
+    if [[ -d "$tmp/profiles" ]]; then cp -R "$tmp/profiles" "$dir/hosts/$name/"; fi
     if [[ -d "$tmp/logs" ]]; then cp -R "$tmp/logs" "$dir/hosts/$name/"; fi
     rm -rf "$tmp"
   done <<<"$HOSTS"

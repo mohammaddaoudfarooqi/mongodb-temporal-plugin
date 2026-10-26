@@ -29,17 +29,17 @@ setup_schema() {
   # SCHEMA_URI: an elevated, setup-only credential when the runtime one
   # is least-privilege (the quickstart).
   uri=${SCHEMA_URI:-$(cat "$ROOT/mongo.uri")}
-  for db in "$prefix" "${prefix}_visibility"; do
-    for ((i = 1; ; i++)); do
-      if "$ROOT/bin/temporal-mongodb-tool" setup-schema --uri "$uri" --database "$db" \
-        --schema-dir "$ROOT/schema/versioned" --num-history-shards "$NUM_HISTORY_SHARDS" \
-        >>"$RESULTS/logs/schema.log" 2>&1; then break; fi
-      ((i < attempts)) || { echo "schema setup for $db failed after $attempts attempts" >&2; return 1; }
-      pause 10
-    done
+  # Both stores share one database (the default layout).
+  db=$prefix
+  for ((i = 1; ; i++)); do
+    if "$ROOT/bin/temporal-mongodb-tool" setup-schema --uri "$uri" --database "$db" \
+      --schema-dir "$ROOT/schema/versioned" --num-history-shards "$NUM_HISTORY_SHARDS" \
+      >>"$RESULTS/logs/schema.log" 2>&1; then break; fi
+    ((i < attempts)) || { echo "schema setup for $db failed after $attempts attempts" >&2; return 1; }
+    pause 10
   done
   if [[ "$mode" == atlas-search ]]; then
-    "$ROOT/bin/temporal-mongodb-tool" setup-atlas-search --uri "$uri" --database "${prefix}_visibility" \
+    "$ROOT/bin/temporal-mongodb-tool" setup-atlas-search --uri "$uri" --database "$db" \
       --atlas-schema-dir "$ROOT/schema/atlas_search" --timeout 1200 >>"$RESULTS/logs/schema.log" 2>&1 ||
       { echo "Atlas Search index setup failed" >&2; return 1; }
   fi
@@ -52,6 +52,7 @@ start() {
   local addr=${BROADCAST_ADDRESS:-$(hostname -I 2>/dev/null | awk '{print $1}')}
   TEMPORAL_MONGO_URI=$(cat "$ROOT/mongo.uri") TEMPORAL_VISIBILITY_MODE="$mode" DB_PREFIX="$prefix" \
     NUM_HISTORY_SHARDS="$NUM_HISTORY_SHARDS" BROADCAST_ADDRESS="$addr" PROMETHEUS_ADDR=0.0.0.0:9090 \
+    PPROF_PORT="${PPROF_PORT:-7936}" \
     WORKDIR="$RUNDIR/cfg-$mode" SKIP_BUILD=1 SKIP_SCHEMA=1 FRONTEND_PORT="$port" \
     nohup bash "$ROOT/examples/e2e/scripts/run-native-server.sh" \
     >"$RESULTS/logs/server-$mode.log" 2>&1 </dev/null &

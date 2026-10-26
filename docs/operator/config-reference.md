@@ -116,7 +116,10 @@ persistence:
           uri: mongodb+srv://cluster0.example.mongodb.net/
           username: temporal_runtime
           passwordEnv: MONGO_TEMPORAL_PW
-          database: temporal_visibility
+          database: temporal          # the same database as mongo-default
           visibilityMode: atlas-search
-          atlasSearchIndexName: vis_default
 ```
+
+Both stores share one database by default. To give the visibility store
+its own database, see
+[Optional: separate databases](deployment.md#optional-separate-databases).

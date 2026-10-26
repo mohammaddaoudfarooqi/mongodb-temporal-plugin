@@ -47,3 +47,48 @@ func TestVoyage_ErrorStatusIsReportedWithoutTheKey(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestVoyageEndpoint_DefaultsToMongoDB(t *testing.T) {
+	for key, want := range map[string]string{
+		"al-0123456789abcdef": "https://ai.mongodb.com/v1/embeddings",
+		"":                    "https://ai.mongodb.com/v1/embeddings",
+		"al-eu-0123456789":    "https://eu.ai.mongodb.com/v1/embeddings",
+		"al-us-0123456789":    "https://us.ai.mongodb.com/v1/embeddings",
+	} {
+		if got := EndpointFor(key); got != want {
+			t.Errorf("EndpointFor(%q) = %s, want %s", key, got, want)
+		}
+	}
+}
+
+func TestVoyage_RateLimited_RetriesThenSucceeds(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls < 3 {
+			w.Header().Set("Retry-After", "0")
+			http.Error(w, `{"detail":"rate limited"}`, http.StatusTooManyRequests)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"index": 0, "embedding": []float64{1}}}})
+	}))
+	defer srv.Close()
+	vecs, err := (&Voyage{Key: "k", Model: "voyage-4", URL: srv.URL}).Embed(context.Background(), []string{"a"}, "query")
+	if err != nil || len(vecs) != 1 || calls != 3 {
+		t.Fatalf("vecs=%v err=%v calls=%d", vecs, err, calls)
+	}
+}
+
+func TestVoyage_RateLimitedThroughout_GivesUp(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Retry-After", "0")
+		http.Error(w, `{"detail":"rate limited"}`, http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+	_, err := (&Voyage{Key: "k", Model: "voyage-4", URL: srv.URL}).Embed(context.Background(), []string{"a"}, "query")
+	if err == nil || !strings.Contains(err.Error(), "429") || calls != voyageAttempts {
+		t.Fatalf("err=%v calls=%d", err, calls)
+	}
+}

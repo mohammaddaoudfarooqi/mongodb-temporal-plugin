@@ -1,80 +1,30 @@
 {
   "schema_version": "1.1.0",
   "collections": [
-    {
-      "name": "shards"
-    },
-    {
-      "name": "namespaces"
-    },
-    {
-      "name": "namespace_metadata"
-    },
-    {
-      "name": "cluster_metadata"
-    },
-    {
-      "name": "cluster_membership"
-    },
-    {
-      "name": "executions"
-    },
-    {
-      "name": "current_executions"
-    },
-    {
-      "name": "history_nodes"
-    },
-    {
-      "name": "history_trees"
-    },
-    {
-      "name": "history_tasks"
-    },
-    {
-      "name": "replication_dlq"
-    },
-    {
-      "name": "task_queues"
-    },
-    {
-      "name": "tasks"
-    },
-    {
-      "name": "task_queue_user_data"
-    },
-    {
-      "name": "build_id_to_task_queue"
-    },
-    {
-      "name": "nexus_endpoints"
-    },
-    {
-      "name": "nexus_endpoints_table"
-    },
-    {
-      "name": "legacy_queues"
-    },
-    {
-      "name": "legacy_queue_messages"
-    },
-    {
-      "name": "legacy_dlq_metadata"
-    },
-    {
-      "name": "legacy_dlq_messages"
-    },
-    {
-      "name": "v2_queues"
-    },
-    {
-      "name": "v2_messages"
-    },
-    {
-      "name": "visibility_executions"
-    },
-    {
-      "name": "visibility_search_attributes"
-    }
+    {"name": "shards", "store": "core"},
+    {"name": "namespaces", "store": "core"},
+    {"name": "namespace_metadata", "store": "core"},
+    {"name": "cluster_metadata", "store": "core"},
+    {"name": "cluster_membership", "store": "core"},
+    {"name": "executions", "store": "core"},
+    {"name": "current_executions", "store": "core"},
+    {"name": "history_nodes", "store": "core"},
+    {"name": "history_trees", "store": "core"},
+    {"name": "history_tasks", "store": "core"},
+    {"name": "replication_dlq", "store": "core"},
+    {"name": "task_queues", "store": "core"},
+    {"name": "tasks", "store": "core"},
+    {"name": "task_queue_user_data", "store": "core"},
+    {"name": "build_id_to_task_queue", "store": "core"},
+    {"name": "nexus_endpoints", "store": "core"},
+    {"name": "nexus_endpoints_table", "store": "core"},
+    {"name": "legacy_queues", "store": "core"},
+    {"name": "legacy_queue_messages", "store": "core"},
+    {"name": "legacy_dlq_metadata", "store": "core"},
+    {"name": "legacy_dlq_messages", "store": "core"},
+    {"name": "v2_queues", "store": "core"},
+    {"name": "v2_messages", "store": "core"},
+    {"name": "visibility_executions", "store": "visibility"},
+    {"name": "visibility_search_attributes", "store": "visibility"}
   ]
 }

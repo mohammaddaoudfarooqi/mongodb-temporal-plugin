@@ -123,7 +123,7 @@ func dial(cfg config) (client.Client, error) {
 func openStore(ctx context.Context, cfg config) (*kb.Store, error) {
 	var emb kb.Embedder
 	if cfg.mode == kb.ModeVoyage {
-		emb = &kb.Voyage{Key: cfg.voyageKey, Model: cfg.model}
+		emb = &kb.Voyage{Key: cfg.voyageKey, Model: cfg.model, URL: os.Getenv("VOYAGE_URL")}
 	}
 	return kb.Open(ctx, cfg.mongoURI, cfg.db, cfg.mode, cfg.model, emb, cfg.dims)
 }

@@ -56,10 +56,27 @@ render() {
   expected="$BATS_TEST_TMPDIR/expected.yaml"
   TEMPORAL_VISIBILITY_MODE=aggregation sh "$ROOT/deploy/config/render-config.sh" \
     "$ROOT/deploy/config/development.yaml" "$expected.tmp"
-  sed -e "s|database: temporal_visibility|database: temporal_visibility|" \
-      -e "s|database: temporal$|database: temporal|" \
-      -e "s|numHistoryShards: 4|numHistoryShards: 4|" \
+  sed -e "s|numHistoryShards: 4|numHistoryShards: 4|" \
       -e "s|/etc/temporal/config/dynamicconfig/development.yaml|$WORK/dynamicconfig/development.yaml|" \
       "$expected.tmp" > "$expected"
   diff -u "$expected" "$WORK/development.yaml"
+}
+
+@test "by default both stores use one database" {
+  run render DB_PREFIX=tmx
+  [ "$status" -eq 0 ]
+  [ "$(grep -c 'database: tmx$' "$WORK/development.yaml")" -eq 2 ]
+  ! grep -q '_visibility' "$WORK/development.yaml"
+}
+
+@test "VISIBILITY_DB puts the visibility store in its own database" {
+  run render DB_PREFIX=tmx VISIBILITY_DB=tmx_vis
+  [ "$status" -eq 0 ]
+  [ "$(grep -c 'database: tmx$' "$WORK/development.yaml")" -eq 1 ]
+  [ "$(grep -c 'database: tmx_vis$' "$WORK/development.yaml")" -eq 1 ]
+}
+
+@test "a non-numeric PPROF_PORT is refused" {
+  run render PPROF_PORT='7936"; evil: x'
+  [ "$status" -eq 2 ]
 }

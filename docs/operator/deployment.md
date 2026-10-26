@@ -59,24 +59,29 @@ you can run one of those, use 9.0.4+ or 8.2, or a host kernel older than
 - Self-hosted: deploy a 3-node replica set; enable journaling and WT
   compression; provision storage for expected write IOPS + oplog headroom.
 
-### 2. Create databases and users
+### 2. Create the database users
+
+Both stores, Temporal's state and its visibility (workflow search),
+live in one database, `temporal`. The Atlas Search index sits on the
+visibility collection in that database: Atlas builds it from the
+collection itself, with no separate search system to sync.
 
 Two least-privilege users are recommended:
 
-- `temporal_runtime` — `readWrite` on `temporal` and `temporal_visibility`.
-- `temporal_admin`  — `dbAdmin` on the same databases, used only for
+- `temporal_runtime` — `readWrite` on `temporal`.
+- `temporal_admin`  — `dbAdmin` on `temporal`, used only for
   `setup-schema`/`update-schema` and Atlas Search index management.
 
 ### 3. Install the schema
 
 ```
-temporal-mongodb-tool setup-schema --config config.yaml
+temporal-mongodb-tool setup-schema --uri "$ADMIN_URI" --database temporal --num-history-shards 512
 ```
 
-(Optional; Atlas Search only) install search indexes:
+(Atlas Search visibility only) install the search index:
 
 ```
-temporal-mongodb-tool setup-atlas-search --config config.yaml
+temporal-mongodb-tool setup-atlas-search --uri "$ADMIN_URI" --database temporal
 ```
 
 ### 4. Configure Temporal server
@@ -101,10 +106,31 @@ persistence:
         indexName: temporal_visibility
         options:
           uri: mongodb+srv://temporal_runtime:${MONGO_PASSWORD}@cluster0.example.mongodb.net/
-          database: temporal_visibility
+          database: temporal
           visibilityMode: atlas-search
-          atlasSearchIndexName: vis_default
 ```
+
+Both datastores name the same database. Each datastore opens its own
+connection pool, so size `maxPoolSize` for two pools per Temporal
+process.
+
+#### Optional: separate databases
+
+If you want database-level permissions, for example a reporting tool
+with read-only access to workflow search but no access to workflow
+state, give the visibility store its own database. Set up each
+database with only its own store's collections:
+
+```
+temporal-mongodb-tool setup-schema --uri "$ADMIN_URI" --database temporal --stores core --num-history-shards 512
+temporal-mongodb-tool setup-schema --uri "$ADMIN_URI" --database temporal_visibility --stores visibility --num-history-shards 512
+temporal-mongodb-tool setup-atlas-search --uri "$ADMIN_URI" --database temporal_visibility
+```
+
+and set `database: temporal_visibility` on `mongo-visibility`. Grant
+`temporal_runtime` `readWrite` on both databases. Restore the two
+databases to the same point in time: restoring only one leaves
+workflow search out of step with workflow state.
 
 ### 5. Start Temporal server
 
@@ -130,8 +156,24 @@ status (if Search mode).
 
 1. Update `temporal-mongodb-tool` and `temporal-mongodb-server` binaries
    to the new plugin version.
-2. Run `update-schema --target <version>` against the cluster.
+2. Run `update-schema --uri ... --database temporal` against the cluster
+   (each database, with separate databases, passing its `--stores`). It
+   applies the latest schema version unless you pass `--schema-version`.
 3. Roll Temporal server processes.
+
+### Upgrading a two-database deployment
+
+Both stores now share one database by default (ADR-016). A deployment
+whose config names its databases explicitly is unaffected: keep
+`database: temporal_visibility` on `mongo-visibility`.
+
+The bundled configuration changed: `deploy/config/development.yaml`,
+which the Docker images and Compose stacks use, now points the
+visibility store at `temporal`. An existing stack started from it before
+this change keeps its workflow search data in `temporal_visibility`, so
+after upgrading, existing workflows would be missing from List and
+Count. Either keep running the previous image, or start that stack
+afresh (`down -v`) on the new one.
 
 ## Rollback
 

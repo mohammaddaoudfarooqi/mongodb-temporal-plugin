@@ -83,7 +83,7 @@ SH
 fake_server_script() { # records its environment, then listens like a frontend
   cat > "$R/examples/e2e/scripts/run-native-server.sh" <<SH
 #!/usr/bin/env bash
-env | grep -E '^(SKIP_SCHEMA|SKIP_BUILD|BROADCAST_ADDRESS|PROMETHEUS_ADDR|DB_PREFIX|TEMPORAL_VISIBILITY_MODE|NUM_HISTORY_SHARDS)=' > "$BATS_TEST_TMPDIR/server.env"
+env | grep -E '^(SKIP_SCHEMA|SKIP_BUILD|BROADCAST_ADDRESS|PROMETHEUS_ADDR|PPROF_PORT|DB_PREFIX|TEMPORAL_VISIBILITY_MODE|NUM_HISTORY_SHARDS)=' > "$BATS_TEST_TMPDIR/server.env"
 [ -n "\$TEMPORAL_MONGO_URI" ] && echo uri-present >> "$BATS_TEST_TMPDIR/server.env"
 exec python3 -c 'import os,socket,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(("127.0.0.1", int(os.environ["FRONTEND_PORT"]))); s.listen(); time.sleep(30)'
 SH
@@ -96,10 +96,13 @@ free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",
   export FRONTEND_PORT=$(free_port) BROADCAST_ADDRESS=10.40.1.10
   run bash "$REMOTE/server.sh" start aggregation tmc_agg --schema
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  [ "$(cat "$BATS_TEST_TMPDIR/tool.count")" -ge 4 ]   # 2 failures + 2 databases
+  [ "$(cat "$BATS_TEST_TMPDIR/tool.count")" -eq 3 ]   # 2 failures + 1 database
+  grep -q -- '--database tmc_agg ' "$BATS_TEST_TMPDIR/tool.calls"
+  ! grep -q '_visibility' "$BATS_TEST_TMPDIR/tool.calls"
   grep -q 'SKIP_SCHEMA=1' "$BATS_TEST_TMPDIR/server.env"
   grep -q 'BROADCAST_ADDRESS=10.40.1.10' "$BATS_TEST_TMPDIR/server.env"
   grep -q 'NUM_HISTORY_SHARDS=8' "$BATS_TEST_TMPDIR/server.env"
+  grep -q 'PPROF_PORT=7936' "$BATS_TEST_TMPDIR/server.env"
   grep -q 'uri-present' "$BATS_TEST_TMPDIR/server.env"
   ! grep -rq REMOTESECRET "$R/results"
   bash "$REMOTE/server.sh" stop
@@ -156,6 +159,58 @@ PY
   [ "$status" -eq 0 ]
   head -1 "$R/results/samples.csv" | grep -q '^ts,cpu_pct,mem_used_pct,server_rss_kb$'
   tail -1 "$R/results/samples.csv" | grep -Eq '^[0-9]+,[0-9.]+,75\.0,123456$'
+}
+
+fake_pprof() { # $1: goroutine total; a curl that serves the profiler's endpoints
+  mkdir -p "$BATS_TEST_TMPDIR/pbin"
+  cat > "$BATS_TEST_TMPDIR/pbin/curl" <<SH
+#!/usr/bin/env bash
+echo "curl \$*" >> "$BATS_TEST_TMPDIR/curl.calls"
+out=""; url=""; prev=""
+for a in "\$@"; do [ "\$prev" = "-o" ] && out=\$a; case "\$a" in http*) url=\$a ;; esac; prev=\$a; done
+[ "$1" = none ] && exit 7
+case "\$url" in
+  */debug/pprof/heap*) printf 'HEAPPROFILE' > "\$out" ;;
+  */debug/pprof/goroutine*) echo "goroutine profile: total $1"; echo "1 @ 0x1" ;;
+esac
+SH
+  chmod +x "$BATS_TEST_TMPDIR/pbin/curl"
+}
+
+@test "a profile snapshot saves the heap profile and the goroutine count" {
+  fake_pprof 812
+  PATH="$BATS_TEST_TMPDIR/pbin:$PATH" PPROF_PORT=7936 run bash "$REMOTE/sampler.sh" profile
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  ls "$R"/results/profiles/heap-*.pb.gz >/dev/null
+  [ "$(cat "$R"/results/profiles/heap-*.pb.gz)" = HEAPPROFILE ]
+  head -1 "$R/results/goroutines.csv" | grep -q '^ts,goroutines$'
+  tail -1 "$R/results/goroutines.csv" | grep -Eq '^[0-9]+,812$'
+  grep -q 'http://127.0.0.1:7936/debug/pprof/heap' "$BATS_TEST_TMPDIR/curl.calls"
+}
+
+@test "a profile snapshot without a reachable profiler records nothing and succeeds" {
+  fake_pprof none
+  PATH="$BATS_TEST_TMPDIR/pbin:$PATH" PPROF_PORT=7936 run bash "$REMOTE/sampler.sh" profile
+  [ "$status" -eq 0 ]
+  ! ls "$R"/results/profiles/heap-*.pb.gz 2>/dev/null
+  [ ! -f "$R/results/goroutines.csv" ]
+}
+
+@test "the native server config enables the profiler on localhost when PPROF_PORT is set" {
+  repo="$BATS_TEST_DIRNAME/../../.."
+  W="$BATS_TEST_TMPDIR/cfg"
+  RENDER_ONLY=1 WORKDIR="$W" TEMPORAL_MONGO_URI=mongodb://h/ PPROF_PORT=7936 \
+    run bash "$repo/examples/e2e/scripts/run-native-server.sh"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  python3 - "$W/development.yaml" <<'PY'
+import re, sys
+s = open(sys.argv[1]).read()
+g = re.search(r"^global:\n((?:    .*\n|\n)*)", s, re.M).group(1)
+assert re.search(r"^    pprof:\n        port: 7936\n        host: \"127\.0\.0\.1\"\n", g, re.M), g
+PY
+  RENDER_ONLY=1 WORKDIR="$W.off" TEMPORAL_MONGO_URI=mongodb://h/ \
+    run bash "$repo/examples/e2e/scripts/run-native-server.sh"
+  ! grep -q pprof "$W.off/development.yaml"
 }
 
 # --- gates.sh ---

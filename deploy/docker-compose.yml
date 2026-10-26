@@ -90,16 +90,10 @@ services:
         command:
             - |
                 set -e
-                echo "setup-schema: temporal database"
+                echo "setup-schema: temporal database (both stores)"
                 temporal-mongodb-tool setup-schema \
                     --uri "$${TEMPORAL_MONGO_URI}" \
                     --database temporal \
-                    --schema-dir /etc/temporal-mongodb/schema/versioned \
-                    --num-history-shards 4
-                echo "setup-schema: temporal_visibility database"
-                temporal-mongodb-tool setup-schema \
-                    --uri "$${TEMPORAL_MONGO_URI}" \
-                    --database temporal_visibility \
                     --schema-dir /etc/temporal-mongodb/schema/versioned \
                     --num-history-shards 4
                 echo "schema setup complete."

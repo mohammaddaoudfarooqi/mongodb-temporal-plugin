@@ -23,9 +23,82 @@ type Collections struct {
 	Collections   []Collection `json:"collections"`
 }
 
-// Collection names one MongoDB collection.
+// Collection names one MongoDB collection and the store that owns it.
 type Collection struct {
 	Name string `json:"name"`
+	// Store is "core" (shards, executions, history, tasks, metadata,
+	// queues) or "visibility". It decides which collections a database
+	// gets when the two stores use separate databases.
+	Store string `json:"store"`
+}
+
+// Stores selects the stores a database holds.
+type Stores string
+
+const (
+	// StoresAll is one database for both stores (the default).
+	StoresAll Stores = "all"
+	// StoresCore is the core persistence database of a two-database layout.
+	StoresCore Stores = "core"
+	// StoresVisibility is the visibility database of a two-database layout.
+	StoresVisibility Stores = "visibility"
+)
+
+// ParseStores parses a --stores value; empty means all.
+func ParseStores(s string) (Stores, error) {
+	switch Stores(s) {
+	case "", StoresAll:
+		return StoresAll, nil
+	case StoresCore, StoresVisibility:
+		return Stores(s), nil
+	}
+	return "", fmt.Errorf("schema: unknown stores %q (want all, core or visibility)", s)
+}
+
+// ForStores returns the collections a database holding s needs.
+func (c *Collections) ForStores(s Stores) *Collections {
+	if s == StoresAll {
+		return c
+	}
+	out := &Collections{SchemaVersion: c.SchemaVersion}
+	for _, coll := range c.Collections {
+		if Stores(coll.Store) == s {
+			out.Collections = append(out.Collections, coll)
+		}
+	}
+	return out
+}
+
+// OtherStoreData lists the collections of the store a database holding
+// s does not hold, that have documents according to counts. Non-empty
+// means the database already holds both stores, so setting up or
+// upgrading only one of them would leave the other behind.
+func OtherStoreData(all *Collections, s Stores, counts map[string]int64) []string {
+	if s == StoresAll {
+		return nil
+	}
+	var out []string
+	for _, coll := range all.Collections {
+		if Stores(coll.Store) != s && counts[coll.Name] > 0 {
+			out = append(out, coll.Name)
+		}
+	}
+	return out
+}
+
+// ForCollections returns the indexes on c's collections.
+func (idx *Indexes) ForCollections(c *Collections) *Indexes {
+	keep := make(map[string]bool, len(c.Collections))
+	for _, coll := range c.Collections {
+		keep[coll.Name] = true
+	}
+	out := &Indexes{SchemaVersion: idx.SchemaVersion}
+	for _, i := range idx.Indexes {
+		if keep[i.Collection] {
+			out.Indexes = append(out.Indexes, i)
+		}
+	}
+	return out
 }
 
 // Indexes is the shape of schema/versioned/v*/indexes.json.
@@ -73,6 +146,11 @@ func LoadCollections(path string) (*Collections, error) {
 	}
 	if c.SchemaVersion == "" {
 		return nil, fmt.Errorf("schema: %s missing schema_version", path)
+	}
+	for _, coll := range c.Collections {
+		if s := Stores(coll.Store); s != StoresCore && s != StoresVisibility {
+			return nil, fmt.Errorf("schema: %s: collection %q has store %q (want core or visibility)", path, coll.Name, coll.Store)
+		}
 	}
 	return &c, nil
 }

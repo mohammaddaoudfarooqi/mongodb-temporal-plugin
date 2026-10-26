@@ -27,8 +27,8 @@
 #   2. Builds the plugin container image from the repo root Dockerfile.
 #   3. Renders env defaults into a local `.env` file the compose uses.
 #   4. Starts Mongo (self-hosted) or skips it (Atlas), initializes the
-#      replica set, runs `temporal-mongodb-tool setup-schema` for both
-#      the default and visibility databases, then starts the plugin
+#      replica set, runs `temporal-mongodb-tool setup-schema` for the
+#      temporal database (both stores), then starts the plugin
 #      server + Temporal Web UI.
 #   5. Waits until the UI and gRPC endpoints respond, then prints how
 #      to reach them.

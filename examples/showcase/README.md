@@ -37,14 +37,14 @@ MongoDB gives you. **One cluster** does three jobs:
 | Mode | When | How |
 |---|---|---|
 | `auto` | Atlas (M10+, storage auto-scaling) | **Atlas automated embedding**: the vector index has an `autoEmbed` field with a Voyage AI model; the app stores text and queries with text. Preview feature. |
-| `voyage` | Any MongoDB 8 with search (e.g. the Docker quickstart) | The app calls the Voyage AI API (`VOYAGE_API_KEY`) and stores vectors |
+| `voyage` | Any MongoDB 8 with search (e.g. the Docker quickstart) | The app calls MongoDB's Embedding API (`ai.mongodb.com`) with an Atlas model API key (`VOYAGE_API_KEY`) and stores vectors. `VOYAGE_URL` overrides the endpoint, e.g. `https://api.voyageai.com/v1/embeddings` for a key created on voyageai.com. |
 | `none` | No key | Full-text search only |
 
 Without `SHOWCASE_EMBEDDING`, the mode is `voyage` when `VOYAGE_API_KEY`
 is set, and `none` otherwise.
 
-**`auto` and `voyage` send ticket text to Voyage AI**, a third party:
-through Atlas in `auto` mode, directly in `voyage` mode. The showcase
+**`auto` and `voyage` send ticket text to Voyage AI models** hosted by
+MongoDB: from the cluster in `auto` mode, from the app in `voyage` mode. The showcase
 is for demo data; use `none` if no text may leave your deployment.
 
 ## Run it

@@ -49,11 +49,9 @@ services:
     command:
       - |
         set -e
-        for db in temporal temporal_visibility; do
-          temporal-mongodb-tool setup-schema --uri "$$MONGO_URI" --database "$$db" \
-            --schema-dir /etc/temporal-mongodb/schema/versioned --num-history-shards 4
-        done
-        temporal-mongodb-tool setup-atlas-search --uri "$$MONGO_URI" --database temporal_visibility \
+        temporal-mongodb-tool setup-schema --uri "$$MONGO_URI" --database temporal \
+          --schema-dir /etc/temporal-mongodb/schema/versioned --num-history-shards 4
+        temporal-mongodb-tool setup-atlas-search --uri "$$MONGO_URI" --database temporal \
           --atlas-schema-dir /etc/temporal-mongodb/schema/atlas_search --timeout 600
         echo "schema and visibility search index ready"
 
@@ -111,6 +109,7 @@ services:
       MONGODB_URI: *mongo-uri
       SHOWCASE_EMBEDDING: ${SHOWCASE_EMBEDDING:-}
       VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
+      VOYAGE_URL: ${VOYAGE_URL:-}
       VOYAGE_MODEL: ${VOYAGE_MODEL:-voyage-4}
     command: ["setup"]
 

@@ -64,6 +64,29 @@ For self-hosted (Aggregation mode), standard MongoDB B-tree indexes serve
 visibility. Equality and prefix queries are cheap; arbitrary `LIKE` is
 not supported (anchored-prefix only).
 
+## Temporal server memory
+
+Most of a history host's memory is Temporal's own workflow cache, not
+the plugin. By default the cache is bounded by entry count
+(`history.hostLevelCacheMaxSize`, 128,000 entries), not bytes, and each
+entry lives for `history.cacheTTL` (1 hour). Under steady load the heap
+grows for about an hour, then levels off once entries start to expire.
+
+On the release-qualification soak (Atlas M40, about 15 workflows/s per
+history host, 256 shards per host), the in-use heap levelled off at
+about 2.1 GB after an hour, and RSS at about 4.5 GB. Goroutines stayed
+flat. Higher throughput puts more entries in the cache within the hour,
+so the plateau rises with load, up to the entry cap.
+
+- Give each history host about twice the cache's steady-state heap in
+  RAM: Go's garbage collector lets the heap reach about twice its live
+  size by default.
+- To cap the cache by size instead, set `history.cacheSizeBasedLimit:
+  true` in dynamic config. The cap is then
+  `history.hostLevelCacheMaxSizeBytes` (default about 1 GB).
+- Set `GOMEMLIMIT` (for example 80% of the container's memory limit) to
+  keep RSS close to the live heap.
+
 ## What hurts you if you don't plan for it
 
 - **History collection growth.** Use Atlas Online Archive or a retention

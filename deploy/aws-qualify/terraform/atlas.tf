@@ -106,10 +106,6 @@ resource "mongodbatlas_database_user" "runtime" {
   }
   roles {
     role_name     = "readWrite"
-    database_name = "temporal_visibility"
-  }
-  roles {
-    role_name     = "readWrite"
     database_name = "support"
   }
 

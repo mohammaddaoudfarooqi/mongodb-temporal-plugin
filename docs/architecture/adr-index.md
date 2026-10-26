@@ -16,10 +16,11 @@ new ADR and mark the old one `Superseded`.
 | [008](adr-008-shards-collection-unsharded.md) | Accepted | Shards collection not natively MongoDB-sharded |
 | [009](adr-009-history-nodes-single-collection.md) | Accepted | Single history_nodes collection with compound index |
 | [010](adr-010-ttl-indexes.md) | Accepted | TTL indexes for task + membership expiry |
-| [011](adr-011-separate-databases.md) | Accepted | Separate databases per Temporal datastore |
+| [011](adr-011-separate-databases.md) | Superseded by 016 | Separate databases per Temporal datastore |
 | [012](adr-012-no-goroutines-outlive-factory.md) | Accepted | No goroutines outlive the factory |
 | [013](adr-013-error-classification.md) | Accepted | Error classification into serviceerror tiers |
 | [014](adr-014-versioned-schema.md) | Accepted | Versioned schema with _schema_version document |
+| [016](adr-016-one-database.md) | Accepted | One database for both Temporal datastores by default |
 
 ## ADR template
 

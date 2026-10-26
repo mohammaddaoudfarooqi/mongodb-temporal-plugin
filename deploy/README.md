@@ -68,15 +68,15 @@ When you pass `--atlas`:
   `TEMPORAL_VISIBILITY_MODE=atlas-search` if you have created Atlas
   Search indexes).
 - The Atlas cluster must be reachable from the Docker network and
-  the DB user must have `readWrite` + `dbAdmin` on the `temporal` and
-  `temporal_visibility` databases.
+  the DB user must have `readWrite` + `dbAdmin` on the `temporal`
+  database, which holds both stores.
 
 To create Atlas Search indexes (required for `atlas-search` visibility
 mode):
 
 ```bash
 docker run --rm "$PLUGIN_IMAGE_TAG" temporal-mongodb-tool setup-atlas-search \
-    --uri "$ATLAS_URI" --database temporal_visibility
+    --uri "$ATLAS_URI" --database temporal
 ```
 
 On macOS/Windows, `deploy.sh` blocks `--atlas` with an explanatory
@@ -189,8 +189,8 @@ replica-set initialization on slow hosts.
 
 ### `setup-schema` fails on Atlas
 
-Confirm the DB user has `dbAdmin` on `temporal` and
-`temporal_visibility`. `readWrite` alone can't create indexes.
+Confirm the DB user has `dbAdmin` on `temporal`. `readWrite` alone
+can't create indexes.
 
 ### UI shows "cluster unreachable"
 

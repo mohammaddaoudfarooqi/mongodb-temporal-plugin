@@ -1,6 +1,6 @@
 # ADR-011: Separate databases per Temporal datastore
 
-- Status: Accepted
+- Status: Superseded by ADR-016
 - Date: 2026-04-30
 - Deciders: plugin architecture review
 

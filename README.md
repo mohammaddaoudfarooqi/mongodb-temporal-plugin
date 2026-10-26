@@ -47,9 +47,9 @@ through Temporal's extension points:
 
 ```
                  ┌──────────────────────────── MongoDB ─────────────────────────────┐
- Temporal server │  temporal              temporal_visibility        your app data  │
-  + this plugin ─┼─▶ shards, executions,   visibility documents       (same cluster,│
-                 │   history, tasks, …     + Atlas Search index       own indexes)  │
+ Temporal server │  temporal (one database)                          your app data  │
+  + this plugin ─┼─▶ shards, executions, history, tasks, …            (same cluster,│
+                 │   visibility documents + Atlas Search index        own indexes)  │
                  └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -98,8 +98,7 @@ index):
 
 ```bash
 temporal-mongodb-tool setup-schema --uri "$MONGO_URI" --database temporal --num-history-shards 512
-temporal-mongodb-tool setup-schema --uri "$MONGO_URI" --database temporal_visibility --num-history-shards 512
-temporal-mongodb-tool setup-atlas-search --uri "$MONGO_URI" --database temporal_visibility
+temporal-mongodb-tool setup-atlas-search --uri "$MONGO_URI" --database temporal
 ```
 
 **2. Wire the plugin into your Temporal server binary**
@@ -143,9 +142,15 @@ persistence:
           uri: mongodb+srv://cluster.example.mongodb.net/
           username: temporal_runtime
           passwordEnv: MONGO_TEMPORAL_PW
-          database: temporal_visibility
+          database: temporal
           visibilityMode: atlas-search
 ```
+
+Both stores use one database. Atlas Search indexes the visibility
+collection in place, so there is no separate search system to run or
+keep in sync. (Separate databases are
+[an option](docs/operator/deployment.md#optional-separate-databases) if
+you want database-level permissions.)
 
 Every option is in
 [`docs/operator/config-reference.md`](docs/operator/config-reference.md).

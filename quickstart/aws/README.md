@@ -63,7 +63,7 @@ The showcase's semantic search uses Voyage AI embeddings:
 | `.env` | How embeddings are made |
 |---|---|
 | no `VOYAGE_API_KEY` (default) | **Atlas automated embedding**: Atlas embeds the text with Voyage AI and queries pass plain text. This is a preview feature, billed per token on your Atlas invoice. |
-| `VOYAGE_API_KEY=…` | The showcase calls the Voyage AI API itself and stores the vectors. |
+| `VOYAGE_API_KEY=…` | The showcase calls MongoDB's Embedding API (`ai.mongodb.com`) itself, with an Atlas model API key, and stores the vectors. |
 
 Either way, **ticket text is sent to Voyage AI**. The showcase is for
 demo data only; don't load real customer tickets into it.

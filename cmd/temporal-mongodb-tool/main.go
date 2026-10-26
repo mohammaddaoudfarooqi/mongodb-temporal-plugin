@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 
 	internalmongo "github.com/mohammaddaoudfarooqi/mongodb-temporal-plugin/internal/mongo"
 	"github.com/mohammaddaoudfarooqi/mongodb-temporal-plugin/internal/schema"
@@ -85,6 +86,46 @@ func bindShared(fs *flag.FlagSet, sf *sharedFlags) {
 		"Operation timeout in seconds; defaults to 10 minutes")
 }
 
+// bindStores registers --stores: which stores the database holds. Both
+// stores share one database by default; with separate databases, pass
+// core for the persistence database and visibility for the visibility
+// database, so neither gets the other's collections.
+func bindStores(fs *flag.FlagSet) *string {
+	return fs.String("stores", "all",
+		"Stores this database holds: all (one database for both), core or visibility")
+}
+
+// loadManifests reads a version's manifests, keeping only what a
+// database holding stores needs. It refuses a single store on a database
+// whose other store already has data: _schema_version is per database,
+// so upgrading one store there would mark the other one done too.
+func loadManifests(ctx context.Context, db *mongo.Database, versionDir string, stores schema.Stores) (*schema.Collections, *schema.Indexes) {
+	collections, err := schema.LoadCollections(versionDir + "/collections.json")
+	if err != nil {
+		log.Fatal(err)
+	}
+	indexes, err := schema.LoadIndexes(versionDir + "/indexes.json")
+	if err != nil {
+		log.Fatal(err)
+	}
+	if stores != schema.StoresAll {
+		counts := map[string]int64{}
+		for _, c := range collections.Collections {
+			n, err := db.Collection(c.Name).EstimatedDocumentCount(ctx)
+			if err != nil {
+				log.Fatal(err)
+			}
+			counts[c.Name] = n
+		}
+		if other := schema.OtherStoreData(collections, stores, counts); len(other) > 0 {
+			log.Fatalf("--stores %s: database %s also holds the other store's data (%s); use --stores all",
+				stores, db.Name(), strings.Join(other, ", "))
+		}
+	}
+	collections = collections.ForStores(stores)
+	return collections, indexes.ForCollections(collections)
+}
+
 // versionDir resolves the schema version directory, defaulting to the
 // newest one under --schema-dir.
 func (sf *sharedFlags) versionDir() string {
@@ -123,7 +164,12 @@ func runSetupSchema(args []string) {
 	var sf sharedFlags
 	fs := flag.NewFlagSet("setup-schema", flag.ExitOnError)
 	bindShared(fs, &sf)
+	storesFlag := bindStores(fs)
 	_ = fs.Parse(args)
+	stores, err := schema.ParseStores(*storesFlag)
+	if err != nil {
+		log.Fatal(err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(sf.TimeoutSeconds)*time.Second)
 	defer cancel()
 
@@ -135,14 +181,7 @@ func runSetupSchema(args []string) {
 	// repo root that contains schema/versioned/<ver>/. Pass "" for the
 	// root and build the path from --schema-dir directly.
 	versionDir := sf.versionDir()
-	collections, err := schema.LoadCollections(versionDir + "/collections.json")
-	if err != nil {
-		log.Fatal(err)
-	}
-	indexes, err := schema.LoadIndexes(versionDir + "/indexes.json")
-	if err != nil {
-		log.Fatal(err)
-	}
+	collections, indexes := loadManifests(ctx, db, versionDir, stores)
 
 	created, err := schema.ApplyCollections(ctx, db, collections)
 	if err != nil {
@@ -183,7 +222,12 @@ func runUpdateSchema(args []string) {
 	var sf sharedFlags
 	fs := flag.NewFlagSet("update-schema", flag.ExitOnError)
 	bindShared(fs, &sf)
+	storesFlag := bindStores(fs)
 	_ = fs.Parse(args)
+	stores, err := schema.ParseStores(*storesFlag)
+	if err != nil {
+		log.Fatal(err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(sf.TimeoutSeconds)*time.Second)
 	defer cancel()
 
@@ -200,14 +244,7 @@ func runUpdateSchema(args []string) {
 	}
 
 	versionDir := sf.versionDir()
-	collections, err := schema.LoadCollections(versionDir + "/collections.json")
-	if err != nil {
-		log.Fatal(err)
-	}
-	indexes, err := schema.LoadIndexes(versionDir + "/indexes.json")
-	if err != nil {
-		log.Fatal(err)
-	}
+	collections, indexes := loadManifests(ctx, db, versionDir, stores)
 
 	// Upgrade refuses downgrades, creates missing collections, replaces
 	// indexes whose definition changed, and records the new version
