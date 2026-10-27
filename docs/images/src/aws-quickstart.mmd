@@ -1,0 +1,18 @@
+---
+title: AWS quickstart
+---
+graph LR
+  laptop["Your machine<br/>localhost 8090, 8080, 7233"]
+  subgraph aws[AWS VPC]
+    subgraph ec2[Amazon EC2 host]
+      temporal["Temporal server<br/>with the MongoDB plugin"]
+      tui["Temporal UI"]
+      sui["Showcase UI and worker"]
+    end
+  end
+  atlas[("MongoDB Atlas M10<br/>Temporal state, visibility, tickets")]
+  laptop ==>|SSH tunnel| ec2
+  tui --> temporal
+  sui --> temporal
+  temporal -->|VPC peering| atlas
+  sui -->|VPC peering| atlas

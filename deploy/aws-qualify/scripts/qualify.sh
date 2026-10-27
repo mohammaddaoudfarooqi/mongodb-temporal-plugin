@@ -417,6 +417,13 @@ build_bundle() {
   run_logged "${env[@]}" go build -C "$src" -o "$b/bin/temporal-mongodb-server" ./cmd/temporal-mongodb-server || die "build failed"
   run_logged "${env[@]}" go build -C "$src" -o "$b/bin/temporal-mongodb-tool" ./cmd/temporal-mongodb-tool || die "build failed"
   run_logged "${env[@]}" go build -C "$src/examples/e2e" -o "$b/bin/e2e" ./cmd/e2e || die "build failed"
+  if [[ "$PROFILE" == quickstart ]]; then
+    # The showcase binary embeds the browser UI, which only the
+    # quickstart serves.
+    command -v npm >/dev/null || die "npm (Node.js 20.19+ or 22.12+) is required to build the quickstart's browser UI"
+    run_logged npm --prefix "$src/examples/showcase/ui" ci --no-audit --no-fund || die "UI dependencies failed to install"
+    run_logged npm --prefix "$src/examples/showcase/ui" run build || die "UI build failed"
+  fi
   run_logged "${env[@]}" go build -C "$src/examples/showcase" -o "$b/bin/showcase" ./cmd/showcase || die "build failed"
   cp -R "$src/schema" "$b/" 2>/dev/null || true
   cp -R "$src/deploy/config" "$b/deploy/" 2>/dev/null || true
@@ -862,8 +869,8 @@ cmd_start() {
 cmd_tunnel() {
   load_env; load_profile; load_hosts
   local host; host=$(server_ip 1)
-  log "tunnel open: Temporal UI http://localhost:8080, gRPC localhost:7233 (Ctrl-C to close)"
-  ssh "${SSH_OPTS[@]}" -N -L 8080:127.0.0.1:8080 -L 7233:127.0.0.1:7233 "ec2-user@$host" </dev/null
+  log "tunnel open: support desk http://localhost:8090, Temporal UI http://localhost:8080, gRPC localhost:7233 (Ctrl-C to close)"
+  ssh "${SSH_OPTS[@]}" -N -L 8080:127.0.0.1:8080 -L 8090:127.0.0.1:8090 -L 7233:127.0.0.1:7233 "ec2-user@$host" </dev/null
 }
 
 # cmd_ssh: run a command on the host (after --), or open a shell.

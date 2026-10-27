@@ -11,6 +11,8 @@
 #   showcase-setup   registers the "support" namespace, its search attributes,
 #                    the ticket indexes, seed tickets and the SLA schedule.
 #   showcase-worker  runs the support-desk workflows.
+#   showcase-ui      the support desk in the browser on
+#                    http://localhost:${SHOWCASE_UI_PORT:-8090}.
 #
 # DEVELOPMENT ONLY. MongoDB runs without authentication, and Temporal and
 # its UI accept every request, so every port binds to 127.0.0.1. Never
@@ -121,6 +123,20 @@ services:
     restart: unless-stopped
     environment: *showcase-env
     command: ["worker"]
+
+  showcase-ui:
+    image: ${SHOWCASE_IMAGE:-temporal-mongodb-showcase:quickstart}
+    depends_on:
+      showcase-setup:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${SHOWCASE_UI_PORT:-8090}:8090"
+    environment:
+      <<: *showcase-env
+      SHOWCASE_UI_ADDR: 0.0.0.0:8090
+      TEMPORAL_UI_URL: http://localhost:${TEMPORAL_UI_PORT:-8080}
+    command: ["ui"]
 
 volumes:
   mongo-data:

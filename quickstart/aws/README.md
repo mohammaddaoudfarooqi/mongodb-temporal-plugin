@@ -10,12 +10,12 @@
   services:
   - the Temporal server with the MongoDB plugin (visibility on Atlas
     Search);
-  - the showcase worker (a support desk; see
+  - the showcase worker and its browser UI (a support desk; see
     [`examples/showcase`](../../examples/showcase));
   - the Temporal Web UI.
 
 Nothing is exposed to the internet except SSH from the addresses you
-allow. The UI and gRPC are reached through an SSH tunnel.
+allow. The UIs and gRPC are reached through an SSH tunnel.
 
 > **Temporal runs without authentication.** Anyone with the tunnel, or
 > with a shell on the host, can use every workflow. Keep SSH access
@@ -23,16 +23,13 @@ allow. The UI and gRPC are reached through an SSH tunnel.
 > authorizer
 > ([security guide](../../docs/operator/security.md#secure-the-temporal-frontend-first)).
 
-```
- your machine ──SSH tunnel──▶ EC2 host ──VPC peering──▶ Atlas M10
-  :8080 UI                     Temporal + UI             Temporal state, visibility (Atlas Search),
-  :7233 gRPC                   showcase worker           tickets with full-text + vector search
-```
+![Your machine reaches an EC2 host through an SSH tunnel (support desk on 8090, Temporal UI on 8080, gRPC on 7233); the host runs Temporal with the MongoDB plugin, the Temporal UI, and the showcase UI and worker, and reaches Atlas M10 over VPC peering](../../docs/images/aws-quickstart.svg)
 
 ## What you need
 
 - **Tools:** `terraform` 1.13 or later, the `aws` CLI, `jq`, `go` 1.26,
-  `git`, `python3`, `ssh`/`scp` and `curl`.
+  Node.js 20.19+ or 22.12+ with `npm` (to build the support desk's UI), `git`,
+  `python3`, `ssh`/`scp` and `curl`.
 - **An Atlas project**, and a **project-level API key with Project Owner**
   on it. The quickstart creates and deletes only the cluster, network
   peering, access list entry, database user and (if missing) the
@@ -49,7 +46,8 @@ allow. The UI and gRPC are reached through an SSH tunnel.
 cd quickstart/aws
 cp .env.example .env        # fill in the Atlas key, project ID, AWS credentials
 ./quickstart.sh up          # about 15 minutes, mostly the Atlas cluster build
-./quickstart.sh tunnel      # leave running; open http://localhost:8080/namespaces/support/workflows
+./quickstart.sh tunnel      # leave running; open http://localhost:8090 (support desk)
+                            # and http://localhost:8080/namespaces/support/workflows (Temporal UI)
 ./quickstart.sh tour        # in another terminal
 ```
 

@@ -4,19 +4,21 @@ How the test suite is organized and how to run each tier.
 
 ## Test tiers
 
-| Tier          | Command               | External deps                | Runtime        |
-|---------------|-----------------------|------------------------------|----------------|
-| Unit          | `make unit`           | none                         | <30s           |
-| Integration   | `make integration`    | Docker (testcontainers)      | 2–5 min        |
-| Conformance   | `make conformance`    | Docker (Mongo replica set)   | ~30 min        |
-| Live Atlas    | `make atlas-e2e`      | Atlas cluster env vars       | 5–10 min       |
-| Load          | `make load`           | Docker + k6 or equivalent    | 30 min+        |
+| Tier | Command | External deps | Runtime |
+|---|---|---|---|
+| Unit | `make unit` | none | under 1 min |
+| Integration | `make integration` | Docker (testcontainers) | 2–5 min |
+| Conformance | `make conformance` | Docker (Mongo replica set) | about 30 min |
+| Examples | `make examples` | none | under 1 min |
+| Showcase UI | `make ui` | Node.js 20.19+ or 22.12+ | under 1 min |
+| Live Atlas | `ci/scripts/atlas-e2e.sh` | `ATLAS_URI`, `ATLAS_DATABASE` | 5–10 min |
+| Plugin load | see [Load tests](#load-tests) | Docker | about 1 min |
+| Release qualification | `deploy/aws-qualify/scripts/qualify.sh` | AWS and Atlas | 1–6 h |
 
 Build tags gate the tiers:
 
 - `-tags=integration` — integration tests (testcontainers).
 - `-tags=conformance` — upstream persistence conformance suite.
-- `-tags=atlas` — tests that require a real Atlas Search index.
 
 ## Unit tests
 
@@ -57,22 +59,32 @@ before opening a PR that touches persistence semantics.
 
 ## Live Atlas tests
 
-Requires these env vars:
+`ci/scripts/atlas-e2e.sh` runs the Atlas Search visibility lifecycle and
+the schema tool's `setup-atlas-search` and `drop-atlas-search` against a
+real Atlas cluster. It skips unless these are set:
 
 ```
-MONGO_TEMPORAL_ATLAS_URI=mongodb+srv://...
-MONGO_TEMPORAL_ATLAS_DB_DEFAULT=...
-MONGO_TEMPORAL_ATLAS_DB_VISIBILITY=...
+ATLAS_URI=mongodb+srv://...      # a credential URI
+ATLAS_DATABASE=...               # a scratch database
 ```
 
-The test harness creates and drops its own indexes; never point it
-at a production cluster.
+The tests create and drop their own indexes; never point them at a
+production cluster.
 
 ## Load tests
 
-`make load` runs against a local Mongo replica set and reports
-STPS (sustained transactions per second) for the key operations.
-See `docs/operator/sizing.md` for the baselines we target.
+The plugin load test measures the execution store's own overhead
+against a local MongoDB replica set:
+
+```
+PLUGIN_LOADTEST_REPORT=1 go test -tags=integration -run TestLoad_UpdateWorkflow \
+  ./internal/executionstore/ -args -loadtest.duration=30s -loadtest.concurrency=32
+```
+
+End-to-end throughput on Atlas comes from the release-qualification
+harness ([`deploy/aws-qualify`](../../deploy/aws-qualify)); its results
+are in the sizing guide's
+[What was measured](../operator/sizing.md#what-was-measured).
 
 ## Test data
 

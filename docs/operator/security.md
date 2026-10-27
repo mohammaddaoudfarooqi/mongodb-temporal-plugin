@@ -243,8 +243,11 @@ The AWS quickstart and the release-qualification harness
   - a runtime user with `readWrite` on the Temporal and showcase
     databases only, used by the services.
 - **The host.**
-  - Temporal and the showcase worker run as a dedicated `temporal`
-    system user, with no login shell and no sudo.
+  - Temporal, the showcase worker and the showcase UI run as a
+    dedicated `temporal` system user, with no login shell and no sudo.
+  - The showcase UI, like the Temporal UI, has no authentication. Both
+    listen on localhost only and are reached through the SSH tunnel;
+    anyone with the tunnel can open, change and resolve tickets.
   - Inbound traffic is SSH only, from your address and the ranges you
     list.
   - IMDSv2 is required, and no IAM role is attached.

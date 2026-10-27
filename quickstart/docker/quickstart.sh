@@ -52,6 +52,7 @@ up() {
 status() {
   compose ps --format 'table {{.Service}}\t{{.State}}\t{{.Status}}'
   echo
+  echo "  Support desk    http://localhost:${SHOWCASE_UI_PORT:-8090}"
   echo "  Temporal gRPC   localhost:${TEMPORAL_PORT:-7233}"
   echo "  Temporal UI     http://localhost:${TEMPORAL_UI_PORT:-8080}/namespaces/support/workflows"
   echo "  MongoDB         mongodb://localhost:${MONGO_PORT:-27017}/?directConnection=true"

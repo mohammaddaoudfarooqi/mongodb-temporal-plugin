@@ -45,13 +45,7 @@ through Temporal's extension points:
   - `aggregation`: the same queries as aggregation pipelines, on any
     replica set.
 
-```
-                 ┌──────────────────────────── MongoDB ─────────────────────────────┐
- Temporal server │  temporal (one database)                          your app data  │
-  + this plugin ─┼─▶ shards, executions, history, tasks, …            (same cluster,│
-                 │   visibility documents + Atlas Search index        own indexes)  │
-                 └──────────────────────────────────────────────────────────────────┘
-```
+![Temporal server with the MongoDB plugin, writing its core store and its visibility records to one temporal database on an Atlas cluster, with an Atlas Search index for workflow search, next to your own application data](docs/images/architecture.svg)
 
 Design choices worth knowing (the decision records are in
 [`docs/architecture`](docs/architecture)):
@@ -82,13 +76,13 @@ Some MongoDB 8.0 and 8.3 releases refuse to start there; see
 
 | | |
 |---|---|
-| [**Docker quickstart**](quickstart/docker) | `./quickstart.sh up` starts MongoDB 8.2 with full-text and vector search, Temporal with this plugin, the Temporal UI and the showcase, all on your machine |
-| [**AWS quickstart**](quickstart/aws) | an Atlas M10 cluster peered with an EC2 host that runs Temporal, the showcase and the UI |
-| [**Showcase**](examples/showcase) | a support desk: durable ticket workflows with signals, updates, timers and schedules; operator queries through Atlas Search–backed visibility; hybrid full-text and vector search on the same cluster |
+| [**Docker quickstart**](quickstart/docker) | `./quickstart.sh up` starts MongoDB 8.2 with full-text and vector search, Temporal with this plugin, the Temporal UI and the showcase with its browser UI, all on your machine |
+| [**AWS quickstart**](quickstart/aws) | an Atlas M10 cluster peered with an EC2 host that runs Temporal, the showcase and both UIs |
+| [**Showcase**](examples/showcase) | a support desk in the browser: durable ticket workflows with signals, updates, timers and schedules; operator queries through Atlas Search–backed visibility; full-text, vector and hybrid search side by side on the same cluster |
 
 ```bash
 cd quickstart/docker
-./quickstart.sh up      # about two minutes
+./quickstart.sh up      # about two minutes; then open http://localhost:8090
 ./quickstart.sh tour    # a narrated walkthrough that checks every feature
 ```
 
@@ -173,6 +167,8 @@ make integration             # integration tests: Docker starts MongoDB replica 
 make conformance             # Temporal's upstream persistence suites (~30 min)
 make lint                    # guard scripts for known regressions
 make build                   # bin/temporal-mongodb-server and bin/temporal-mongodb-tool
+make examples                # the example modules (e2e scenarios, showcase)
+make ui                      # the showcase's browser UI (Node.js 20.19+ or 22.12+)
 make qualify-lint qualify-test   # the release-qualification harness, offline
 ```
 
@@ -190,7 +186,7 @@ cmd/
 schema/                versioned collection and index manifests, Atlas Search definitions
 quickstart/            Docker and AWS quickstarts
 examples/
-  showcase/            the support-desk showcase app
+  showcase/            the support-desk showcase: workflows, CLI and browser UI
   e2e/                 end-to-end scenarios and a load runner
 deploy/                Docker Compose stack and the AWS release-qualification harness
 docs/                  operator, architecture and developer documentation

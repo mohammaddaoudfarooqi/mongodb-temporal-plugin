@@ -11,8 +11,9 @@ const (
 	// ModeAuto: Atlas Vector Search automated embedding. Atlas embeds the
 	// text field with Voyage AI; queries pass plain text (Atlas, preview).
 	ModeAuto
-	// ModeVoyage: the app calls the Voyage AI API and stores vectors
-	// (any MongoDB 8 deployment with search, e.g. local Docker).
+	// ModeVoyage: the app calls MongoDB's Embedding API (Voyage AI
+	// models) and stores vectors (any MongoDB 8 deployment with search,
+	// e.g. local Docker).
 	ModeVoyage
 )
 

@@ -2,7 +2,8 @@
 # Temporal on MongoDB Atlas over VPC peering, on AWS (us-east-1).
 #
 #   ./quickstart.sh up [--ref <git-ref>]   create Atlas M10 + EC2, peer them, start everything
-#   ./quickstart.sh tunnel                 Temporal UI on http://localhost:8080, gRPC on localhost:7233
+#   ./quickstart.sh tunnel                 support desk on http://localhost:8090, Temporal UI on
+#                                          http://localhost:8080, gRPC on localhost:7233
 #   ./quickstart.sh tour                   run the showcase's end-to-end tour on the host
 #   ./quickstart.sh status                 the deployment's hosts
 #   ./quickstart.sh ssh [-- <command>]     a shell (or one command) on the host
@@ -28,7 +29,7 @@ Temporal runs without authentication: keep SSH access to yourself, and
 turn on mTLS and an authorizer before sharing it (docs/operator/security.md).
 
 Next:
-  ./quickstart.sh tunnel   # then open http://localhost:8080/namespaces/support/workflows
+  ./quickstart.sh tunnel   # then open http://localhost:8090 (support desk) and http://localhost:8080 (Temporal UI)
   ./quickstart.sh tour     # a narrated demo that checks every feature
 NEXT
     ;;

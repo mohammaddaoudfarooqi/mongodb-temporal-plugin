@@ -6,6 +6,7 @@
 //
 //	showcase setup                 namespace, search attributes, indexes, seed, schedule
 //	showcase worker                run the worker
+//	showcase ui                    the browser UI on SHOWCASE_UI_ADDR (default 127.0.0.1:8090)
 //	showcase tour                  narrated end-to-end demo of every feature
 //	showcase open -customer acme -subject "..." -body "..."
 //	showcase assign|resolve|comment <ticket-id> <text>
@@ -27,6 +28,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -47,7 +49,9 @@ import (
 
 	"github.com/mohammaddaoudfarooqi/mongodb-temporal-plugin/examples/showcase/app"
 	"github.com/mohammaddaoudfarooqi/mongodb-temporal-plugin/examples/showcase/data"
+	"github.com/mohammaddaoudfarooqi/mongodb-temporal-plugin/examples/showcase/desk"
 	"github.com/mohammaddaoudfarooqi/mongodb-temporal-plugin/examples/showcase/kb"
+	"github.com/mohammaddaoudfarooqi/mongodb-temporal-plugin/examples/showcase/web"
 )
 
 type config struct {
@@ -92,7 +96,7 @@ func loadConfig() (config, error) {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: showcase setup|worker|tour|open|assign|resolve|comment|show|find|search|report")
+		fmt.Fprintln(os.Stderr, "usage: showcase setup|worker|ui|tour|open|assign|resolve|comment|show|find|search|report")
 		os.Exit(2)
 	}
 	cfg, err := loadConfig()
@@ -134,6 +138,8 @@ func run(ctx context.Context, cfg config, cmd string, args []string) error {
 		return setup(ctx, cfg)
 	case "worker":
 		return runWorker(ctx, cfg)
+	case "ui":
+		return runUI(ctx, cfg)
 	case "tour":
 		return tour(ctx, cfg)
 	case "open":
@@ -162,7 +168,10 @@ func run(ctx context.Context, cfg config, cmd string, args []string) error {
 			return err
 		}
 		defer c.Close()
-		return c.SignalWorkflow(ctx, args[0], "", cmd, strings.Join(args[1:], " "))
+		if cmd == "assign" {
+			return desk.Assign(ctx, c, args[0], strings.Join(args[1:], " "))
+		}
+		return desk.Resolve(ctx, c, args[0], strings.Join(args[1:], " "))
 	case "comment":
 		if len(args) < 2 {
 			return errors.New("usage: showcase comment <ticket-id> <text>")
@@ -397,55 +406,22 @@ func ensureSchedule(ctx context.Context, c client.Client) error {
 // ---------- operations ----------
 
 func openTicket(ctx context.Context, c client.Client, cfg config, customer, subject, body string) (string, error) {
-	if subject == "" {
-		return "", errors.New("-subject is required")
-	}
-	id := fmt.Sprintf("ticket-%s-%d", customer, time.Now().UnixNano()%1e9)
-	_, err := c.ExecuteWorkflow(ctx, client.StartWorkflowOptions{ID: id, TaskQueue: app.TaskQueue}, app.TicketWorkflow,
-		app.TicketInput{Ticket: supportTicket(id, customer, subject, body), SLABase: cfg.slaBase})
-	return id, err
+	return desk.Open(ctx, c, desk.NewTicket{Customer: customer, Subject: subject, Body: body}, cfg.slaBase)
 }
 
 func comment(ctx context.Context, c client.Client, id, text string) (int, error) {
-	h, err := c.UpdateWorkflow(ctx, client.UpdateWorkflowOptions{WorkflowID: id, UpdateName: app.UpdateComment,
-		Args: []any{text}, WaitForStage: client.WorkflowUpdateStageCompleted})
-	if err != nil {
-		return 0, err
-	}
-	var n int
-	err = h.Get(ctx, &n)
-	return n, err
+	return desk.Comment(ctx, c, id, text)
 }
 
 func ticketState(ctx context.Context, c client.Client, id string) (app.TicketState, error) {
-	var st app.TicketState
-	v, err := c.QueryWorkflow(ctx, id, "", app.QueryTicket)
-	if err != nil {
-		return st, err
-	}
-	return st, v.Get(&st)
+	return desk.State(ctx, c, id)
 }
 
 func find(ctx context.Context, c client.Client, cfg config, q string) ([]string, error) {
-	resp, err := c.ListWorkflow(ctx, &workflowservice.ListWorkflowExecutionsRequest{Namespace: cfg.namespace, Query: q})
-	if err != nil {
-		return nil, err
-	}
-	var ids []string
-	for _, e := range resp.GetExecutions() {
-		ids = append(ids, e.GetExecution().GetWorkflowId())
-	}
-	return ids, nil
+	return desk.Find(ctx, c, cfg.namespace, q)
 }
 
-func report(ctx context.Context, c client.Client) (app.Report, error) {
-	var r app.Report
-	run, err := c.ExecuteWorkflow(ctx, client.StartWorkflowOptions{ID: fmt.Sprintf("sla-report-now-%d", time.Now().Unix()), TaskQueue: app.TaskQueue}, app.SLAReportWorkflow)
-	if err != nil {
-		return r, err
-	}
-	return r, run.Get(ctx, &r)
-}
+func report(ctx context.Context, c client.Client) (app.Report, error) { return desk.Report(ctx, c) }
 
 func poll(ctx context.Context, d time.Duration, f func() error) error {
 	deadline := time.Now().Add(d)
@@ -490,4 +466,51 @@ func printHits(hits []kb.Hit) {
 		}
 		fmt.Printf("    • %s — %s\n      fix: %s\n", h.Subject, strings.Join(how, ", "), h.Resolution)
 	}
+}
+
+// hostList splits SHOWCASE_UI_HOSTS (comma-separated host names).
+func hostList(s string) []string {
+	var out []string
+	for _, h := range strings.Split(s, ",") {
+		if h = strings.TrimSpace(h); h != "" {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// runUI serves the browser UI until ctx ends. It binds to localhost
+// unless SHOWCASE_UI_ADDR says otherwise: it has no authentication.
+func runUI(ctx context.Context, cfg config) error {
+	c, err := dial(cfg)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	s, err := openStore(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer s.Close(context.Background())
+	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	srv := &http.Server{
+		Addr: env("SHOWCASE_UI_ADDR", "127.0.0.1:8090"),
+		Handler: (&web.Server{Client: c, Search: s, Namespace: cfg.namespace, SLABase: cfg.slaBase,
+			TemporalUI: env("TEMPORAL_UI_URL", "http://localhost:8080"), Embedding: cfg.mode.String(),
+			Static: web.Dist(), Log: log, AllowedHosts: hostList(env("SHOWCASE_UI_HOSTS", ""))}).Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+	}
+	errc := make(chan error, 1)
+	go func() { errc <- srv.ListenAndServe() }()
+	log.Info("showcase UI listening", "addr", srv.Addr)
+	select {
+	case err := <-errc:
+		return err
+	case <-ctx.Done():
+	}
+	shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return srv.Shutdown(shutdown)
 }

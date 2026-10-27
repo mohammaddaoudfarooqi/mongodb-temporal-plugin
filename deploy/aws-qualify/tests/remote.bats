@@ -355,7 +355,10 @@ s=socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bi
   fake_tool 0; quickstart_stubs
   printf 'MONGODB_URI=mongodb+srv://u:QSSECRET@h/\nSHOWCASE_EMBEDDING=auto\n' | bash "$REMOTE/quickstart.sh" start
   kill "$LISTENER" 2>/dev/null || true
-  for u in temporal.service showcase-worker.service; do [ -f "$QS_SYSTEMD_DIR/$u" ] || { echo "missing $u"; return 1; }; done
+  for u in temporal.service showcase-worker.service showcase-ui.service; do [ -f "$QS_SYSTEMD_DIR/$u" ] || { echo "missing $u"; return 1; }; done
+  grep -q "ExecStart=.*/bin/showcase ui" "$QS_SYSTEMD_DIR/showcase-ui.service"
+  grep -q "Environment=SHOWCASE_UI_ADDR=127.0.0.1:8090" "$QS_SYSTEMD_DIR/showcase-ui.service"
+  grep -q "systemctl enable --now showcase-ui.service" "$BATS_TEST_TMPDIR/qs.calls"
   grep -q "EnvironmentFile=$QS_ETC/temporal.env" "$QS_SYSTEMD_DIR/temporal.service"
   ! grep -rq QSSECRET "$QS_SYSTEMD_DIR"
   [ "$(stat -f %Lp "$QS_ETC/temporal.env" 2>/dev/null || stat -c %a "$QS_ETC/temporal.env")" = 600 ]

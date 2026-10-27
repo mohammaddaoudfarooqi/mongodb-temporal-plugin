@@ -1,0 +1,3 @@
+# The UI build (ui/, npm run build); only the placeholder is tracked.
+web/dist/*
+!web/dist/.gitkeep

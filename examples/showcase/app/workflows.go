@@ -1,7 +1,6 @@
 package app
 
 import (
-	"errors"
 	"strings"
 	"time"
 
@@ -52,10 +51,10 @@ func TicketWorkflow(ctx workflow.Context, in TicketInput) (TicketState, error) {
 		},
 		workflow.UpdateHandlerOptions{Validator: func(ctx workflow.Context, text string) error {
 			if strings.TrimSpace(text) == "" {
-				return errors.New("comment is empty")
+				return temporal.NewApplicationError("comment is empty", ErrCommentRejected)
 			}
 			if st.Status == support.StatusResolved {
-				return errors.New("ticket is resolved")
+				return temporal.NewApplicationError("ticket is resolved", ErrCommentRejected)
 			}
 			return nil
 		}}); err != nil {

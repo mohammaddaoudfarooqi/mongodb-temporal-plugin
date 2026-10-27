@@ -113,6 +113,26 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 UNIT
+  # The support desk's browser UI. No authentication: localhost only,
+  # reached through `quickstart.sh tunnel`.
+  cat <<UNIT | sudo tee "$UNITS/showcase-ui.service" >/dev/null
+[Unit]
+Description=Temporal + MongoDB showcase UI (support desk)
+After=showcase-worker.service
+Wants=temporal.service
+
+[Service]
+User=$SERVICE_USER
+EnvironmentFile=$ETC/showcase.env
+Environment=SHOWCASE_UI_ADDR=127.0.0.1:8090
+Environment=TEMPORAL_UI_URL=http://localhost:8080
+ExecStart=$ROOT/bin/showcase ui
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+UNIT
   sudo systemctl daemon-reload
   sudo systemctl enable --now temporal.service
 
@@ -127,6 +147,7 @@ UNIT
   # shellcheck disable=SC1090 # written above
   (set -a; . <(sudo cat "$ETC/showcase.env"); set +a; MONGODB_URI="$MONGODB_ADMIN_URI" "$ROOT/bin/showcase" setup)
   sudo systemctl enable --now showcase-worker.service
+  sudo systemctl enable --now showcase-ui.service
 
   echo "Temporal UI"
   sudo dnf install -y -q docker >/dev/null

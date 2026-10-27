@@ -1,0 +1,23 @@
+---
+title: Temporal on MongoDB
+---
+graph LR
+  workers["Your workers<br/>Temporal SDK"]
+  subgraph temporal_srv[Temporal server]
+    frontend["Frontend, history,<br/>matching services"]
+    plugin["MongoDB persistence plugin<br/>core and visibility stores"]
+  end
+  subgraph cluster[MongoDB Atlas cluster]
+    subgraph tdb[temporal database]
+      core[("Core store<br/>shards, executions, history, tasks")]
+      vis[("visibility_executions<br/>workflow search")]
+      fts["Atlas Search index<br/>list, count, full-text"]
+    end
+    app[("Your application data<br/>own indexes, vector search")]
+  end
+  workers --> frontend
+  frontend --> plugin
+  plugin -->|transactions| core
+  plugin -->|visibility records| vis
+  vis -.-> fts
+  plugin -->|search queries| fts

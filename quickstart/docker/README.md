@@ -9,7 +9,7 @@ One command starts a complete local stack:
 - **Temporal server** with the MongoDB persistence plugin, visibility in
   `atlas-search` mode.
 - **Temporal Web UI**.
-- **The showcase**, a support desk (see [`examples/showcase`](../../examples/showcase)).
+- **The showcase**, a support desk with a browser UI (see [`examples/showcase`](../../examples/showcase)).
 
 > **Development only.** MongoDB runs without authentication, and the
 > Temporal frontend and UI accept every request, so every port binds to
@@ -29,7 +29,9 @@ cd quickstart/docker
 ./quickstart.sh tour    # a narrated demo that checks every feature
 ```
 
-Open the Temporal UI at <http://localhost:8080/namespaces/support/workflows>.
+Open the support desk at <http://localhost:8090>, and the Temporal UI at
+<http://localhost:8080/namespaces/support/workflows> to see the same
+tickets as workflows.
 
 | Command | What it does |
 |---|---|
@@ -69,11 +71,13 @@ authentication. To change a port, set it in `.env`:
 |---|---|
 | `TEMPORAL_PORT` | 7233 |
 | `TEMPORAL_UI_PORT` | 8080 |
+| `SHOWCASE_UI_PORT` | 8090 |
 | `MONGO_PORT` | 27017 |
 
 ## Try it yourself
 
-With the stack up, use the showcase CLI through Docker:
+The browser UI does everything below. The same actions from the
+showcase CLI, through Docker:
 
 ```bash
 run() { docker compose run --rm showcase-setup "$@"; }

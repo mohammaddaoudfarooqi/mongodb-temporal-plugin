@@ -64,6 +64,16 @@ Testcontainers for Go (github.com/testcontainers/testcontainers-go) — test-onl
   Used by integration tests to start MongoDB replica sets.
 
 ================================================================================
+React, React DOM and Scheduler (npm: react, react-dom, scheduler) — showcase only
+  https://github.com/facebook/react
+  Copyright (c) Meta Platforms, Inc. and affiliates.
+  Licensed under the MIT License.
+
+  Bundled into the support-desk showcase's browser UI
+  (examples/showcase/ui), which the showcase binary embeds. The plugin
+  itself does not include them.
+
+================================================================================
 
 Indirect dependencies licensed under the Mozilla Public License 2.0
 (github.com/hashicorp/*, github.com/go-sql-driver/mysql) are pulled in

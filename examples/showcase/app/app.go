@@ -13,6 +13,11 @@ import (
 // TaskQueue is where the showcase worker polls.
 const TaskQueue = "support-desk"
 
+// ErrCommentRejected is the error type of the comment validator's
+// rejections. Its messages are meant for the user; other workflow and
+// activity errors are not.
+const ErrCommentRejected = "CommentRejected"
+
 // Workflow message names.
 const (
 	SignalAssign  = "assign"

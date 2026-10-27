@@ -400,6 +400,23 @@ SH
   [[ "$output" == *"insufficient oplog capacity"* ]]
 }
 
+@test "the quickstart deploy builds the browser UI into the showcase; test profiles don't" {
+  bash "$CT" up --profile quickstart >/dev/null
+  run bash "$CT" deploy --profile quickstart
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  grep -q "npm --prefix .*/examples/showcase/ui ci" "$CALLS"
+  grep -q "npm --prefix .*/examples/showcase/ui run build" "$CALLS"
+  n_ui=$(grep -n "npm --prefix .* run build" "$CALLS" | head -1 | cut -d: -f1)
+  n_go=$(grep -n "go build .*examples/showcase .*cmd/showcase" "$CALLS" | head -1 | cut -d: -f1)
+  [ "$n_ui" -lt "$n_go" ] || { echo "the UI must be built before the showcase binary"; return 1; }
+}
+
+@test "a functional deploy does not build the browser UI" {
+  bash "$CT" up --profile functional >/dev/null
+  bash "$CT" deploy --profile functional >/dev/null
+  ! grep -q "npm " "$CALLS"
+}
+
 @test "deploy without --ref uses the ref saved by up" {
   run bash "$CT" up --profile functional --ref v1.2.0
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
@@ -625,11 +642,11 @@ SH
   grep -q "SHOWCASE_EMBEDDING=auto" "$CALLS.stdin"
 }
 
-@test "tunnel forwards the UI and gRPC to localhost" {
+@test "tunnel forwards the UIs and gRPC to localhost" {
   bash "$CT" up --profile quickstart >/dev/null
   run bash "$CT" tunnel --profile quickstart
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  grep -q "ssh .*-N .*-L 8080:127.0.0.1:8080 -L 7233:127.0.0.1:7233 .*ec2-user@198.51.100.1" "$CALLS"
+  grep -q "ssh .*-N .*-L 8080:127.0.0.1:8080 -L 8090:127.0.0.1:8090 -L 7233:127.0.0.1:7233 .*ec2-user@198.51.100.1" "$CALLS"
 }
 
 @test "the test suite refuses the quickstart profile" {

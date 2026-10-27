@@ -219,17 +219,39 @@ func (s *Store) embed(ctx context.Context, d *Doc) error {
 // search over the same collection, fused with Reciprocal Rank Fusion.
 // In ModeNone it is full-text only.
 func (s *Store) Similar(ctx context.Context, query string, limit int) ([]Hit, error) {
+	r, err := s.Search(ctx, query, limit)
+	return r.Hybrid, err
+}
+
+// Results are one query's full-text, vector and hybrid (fused) hits.
+// Vector is empty in ModeNone.
+type Results struct {
+	Text   []Hit `json:"text"`
+	Vector []Hit `json:"vector"`
+	Hybrid []Hit `json:"hybrid"`
+}
+
+// Search runs the full-text and vector searches once and returns each
+// list and their fusion, up to limit hits each.
+func (s *Store) Search(ctx context.Context, query string, limit int) (Results, error) {
 	text, err := s.textSearch(ctx, query, limit*3)
 	if err != nil {
-		return nil, err
+		return Results{}, err
 	}
 	var vector []Hit
 	if s.mode != ModeNone {
 		if vector, err = s.vectorSearch(ctx, query, limit*3); err != nil {
-			return nil, err
+			return Results{}, err
 		}
 	}
-	return Fuse(text, vector, 60, limit), nil
+	return Results{Text: top(text, limit), Vector: top(vector, limit), Hybrid: Fuse(text, vector, 60, limit)}, nil
+}
+
+func top(h []Hit, n int) []Hit {
+	if len(h) > n {
+		return h[:n]
+	}
+	return h
 }
 
 func (s *Store) textSearch(ctx context.Context, query string, n int) ([]Hit, error) {

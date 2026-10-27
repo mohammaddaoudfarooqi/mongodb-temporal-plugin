@@ -1,0 +1,26 @@
+---
+title: Support desk showcase
+---
+graph LR
+  browser["Browser UI<br/>React"]
+  cli["showcase CLI<br/>tour, open, find"]
+  subgraph showcase[Showcase]
+    api["showcase ui<br/>JSON API"]
+    worker["showcase worker<br/>ticket and SLA workflows"]
+  end
+  temporal["Temporal server<br/>with the MongoDB plugin"]
+  subgraph cluster[MongoDB Atlas cluster]
+    tdb[("temporal database<br/>workflow state and visibility")]
+    tickets[("support.tickets<br/>resolved tickets")]
+    search["Atlas Search<br/>full-text"]
+    vector["Atlas Vector Search<br/>Voyage AI embeddings"]
+  end
+  browser --> api
+  cli --> temporal
+  api -->|start, signal, update, query| temporal
+  api -->|hybrid search| tickets
+  temporal --> tdb
+  temporal -->|tasks| worker
+  worker -->|triage, suggest fixes| tickets
+  tickets -.-> search
+  tickets -.-> vector

@@ -15,6 +15,8 @@ help:
 	@echo "  make integration   - integration tests (requires Docker)"
 	@echo "  make conformance   - upstream Temporal conformance suite"
 	@echo "  make lint          - guard scripts for known regressions"
+	@echo "  make ui            - typecheck, test and build the showcase's browser UI (needs Node.js 20.19+ or 22.12+)"
+	@echo "  make examples      - vet and test the example modules (e2e, showcase)"
 	@echo "  make fuzz          - fuzz the visibility query converters"
 	@echo "  make dco           - check DCO sign-off on HEAD commits"
 	@echo "  make build         - build server + tool binaries"
@@ -94,6 +96,18 @@ coverage-combined-gate: coverage.out coverage-integration.out
 .PHONY: conformance
 conformance:
 	$(GO) test -race -tags=conformance -timeout=45m $(PKG)
+
+# ui typechecks, tests and builds the showcase's browser UI into
+# examples/showcase/web/dist, where the showcase binary embeds it.
+.PHONY: ui
+ui:
+	cd examples/showcase/ui && npm ci --no-audit --no-fund && npm run typecheck && npm test && npm run build
+
+# examples vets and tests the example modules (e2e scenarios, showcase).
+.PHONY: examples
+examples:
+	cd examples/e2e && $(GO) vet ./... && $(GO) test -short ./...
+	cd examples/showcase && $(GO) vet ./... && $(GO) test -short ./...
 
 # lint bundles guard scripts that keep known regressions out:
 #   lint-rejectjs   every query dispatcher rejects server-side JavaScript
