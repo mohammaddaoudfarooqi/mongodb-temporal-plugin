@@ -4,27 +4,23 @@ Run a [Temporal](https://temporal.io/) cluster entirely on MongoDB: one
 cluster holds Temporal's state **and** answers its visibility queries.
 You don't need Cassandra, PostgreSQL or Elasticsearch.
 
-> **Note:** this repository is a **reference implementation** for
-> learning and experimentation. **It is not production-ready** in its
-> current form.
+> **Note:** this repository is a reference implementation of Temporal
+> persistence and visibility on MongoDB. It is **not an officially
+> supported MongoDB product**, and it comes with no support commitment
+> or upgrade guarantees.
 >
-> It shows an architecture and patterns for running Temporal's
-> persistence and visibility on MongoDB, but the implementation may
-> lack:
+> It has been tested with Temporal's own persistence test suites, on
+> MongoDB 6.0–9.0, and on Atlas M30 and M40 (failover, node loss,
+> multi-hour soaks, and an in-place upgrade from 8.0 to 9.0 under load);
+> see the [measured results](docs/operator/sizing.md#what-was-measured).
+> It has **not** been tested on sharded clusters, across regions, or
+> above M40, and it has no production deployments yet. Validate it
+> against your own workload, failure scenarios and security requirements
+> before you rely on it.
 >
-> - test coverage of every failure mode and deployment shape;
-> - hardened error handling and input validation;
-> - security hardening and access controls for your environment;
-> - performance tuning for large scale;
-> - long-term support or upgrade guarantees.
->
-> Use it as a starting point for your own implementation, and validate,
-> test and adapt it thoroughly before you run it anywhere that matters.
-> It is not an officially supported MongoDB product.
->
-> **The quickstarts run Temporal without authentication.** They keep it
-> on localhost or behind an SSH tunnel. Before anyone else can reach
-> Temporal, turn on mTLS and an authorizer
+> **The quickstarts run Temporal, and the showcase's web UI, without
+> authentication.** They keep them on localhost or behind an SSH tunnel.
+> Before anyone else can reach Temporal, turn on mTLS and an authorizer
 > ([security guide](docs/operator/security.md#secure-the-temporal-frontend-first)),
 > and keep personal data out of search attributes
 > ([what is stored in plaintext](docs/operator/security.md#what-is-stored-in-plaintext)).
