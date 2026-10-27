@@ -14,6 +14,9 @@
 #   --mongodb VERSION           MongoDB major version (default 8.0)
 #   --servers N                 load profile: Temporal server hosts
 #   --soak DURATION             load profile: soak length (0 skips it)
+#   --max-hours N               hosts terminate themselves N hours after
+#                               boot (default 3 functional, 8 load); size it
+#                               to cover every phase you will run
 #   --keep                      all: leave the stack up for inspection
 #   --yes                       down: no confirmation prompt
 #
@@ -54,12 +57,14 @@ CMD="${1:-}"; [[ -n "$CMD" ]] && shift
 # Stages of `all` re-run this script with the same options.
 ORIG_ARGS=("$@")
 REMOTE_ARGS=()
-PROFILE="" REF="" ATLAS_TIER="" MONGODB="" SERVERS="" SOAK_OVERRIDE="" KEEP=0 YES=0
+PROFILE="" REF="" ATLAS_TIER="" MONGODB="" SERVERS="" SOAK_OVERRIDE="" MAX_HOURS="" KEEP=0 YES=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --profile) PROFILE=$2; shift 2 ;;
     --ref) REF=$2; shift 2 ;;
     --atlas-tier) ATLAS_TIER=$2; shift 2 ;;
+    --max-hours) MAX_HOURS=$2; shift 2
+      [[ "$MAX_HOURS" =~ ^[1-9][0-9]*$ ]] || { echo "--max-hours takes a whole number of hours" >&2; exit 2; } ;;
     --mongodb) MONGODB=$2; shift 2 ;;
     --servers) SERVERS=$2; shift 2 ;;
     --soak) SOAK_OVERRIDE=$2; shift 2 ;;
@@ -322,6 +327,7 @@ cmd_up() {
     -var "admin_cidrs=$cidrs" -var "public_key_path=$SSH_PUBLIC_KEY_PATH" -var "aws_region=$AWS_REGION"
     -var "vpc_cidr=$VPC_CIDR" -var "subnet_cidr=$SUBNET_CIDR")
   [[ -n "$ATLAS_TIER" ]] && vars+=(-var "atlas_instance_size=$ATLAS_TIER")
+  [[ -n "$MAX_HOURS" ]] && vars+=(-var "max_hours=$MAX_HOURS")
   [[ -n "$MONGODB" ]] && vars+=(-var "mongodb_version=$MONGODB")
   [[ -n "$SERVERS" ]] && vars+=(-var "server_count=$SERVERS")
   # Whether the container pre-existed is decided once, here,
@@ -473,11 +479,29 @@ PHASE_FAILED=0
 phase() {
   local name=$1 host=$2; shift 2
   log "phase $name"
-  if rsh "$host" "/opt/qualify/remote/runner.sh $name $*" </dev/null >>"$LOG" 2>&1; then
+  if phase_bg "$name" "$host" "$@" && [[ "$(phase_rc "$name" "$host")" == 0 ]]; then
     ok "phase $name passed"
   else
     warn "phase $name failed"; PHASE_FAILED=1
   fi
+}
+
+# phase_rc NAME HOST: the phase's exit code once it has finished. Polls
+# with short SSH calls: a session held open for an hours-long phase can
+# drop, and dropping it could stop the phase. 10 failed polls in a row,
+# or PHASE_MAX_WAIT seconds, give 1.
+phase_rc() {
+  local name=$1 host=$2 out fails=0 i
+  for ((i = 0; i < ${PHASE_MAX_WAIT:-28800} / 30; i++)); do
+    if out=$(rsh "$host" "/opt/qualify/remote/runner.sh --status $name" </dev/null 2>>"$LOG"); then
+      fails=0
+      [[ "$out" =~ ^[0-9]+$ ]] && { echo "$out"; return 0; }
+    else
+      ((++fails < 10)) || { echo 1; return 0; }
+    fi
+    pause 30
+  done
+  echo 1
 }
 
 phase_bg() { local name=$1 host=$2; shift 2; rsh "$host" "/opt/qualify/remote/runner.sh --background $name $*" </dev/null >>"$LOG" 2>&1; }
@@ -536,7 +560,7 @@ after_failover() {
 
 phase_wait() {
   local name=$1 host=$2
-  if rsh "$host" "/opt/qualify/remote/runner.sh --wait $name" </dev/null >>"$LOG" 2>&1; then ok "phase $name passed"
+  if [[ "$(phase_rc "$name" "$host")" == 0 ]]; then ok "phase $name passed"
   else warn "phase $name failed"; PHASE_FAILED=1; fi
 }
 
@@ -548,10 +572,13 @@ trigger_failover() {
   FAULT_ERR=""
   cluster=$(tf_out cluster_name | jq -r .)
   tmp=$(mktemp "$RUN/atlas.XXXXXX")
+  local why
   code=$(atlas_api POST "$(atlas_project)/clusters/$cluster/restartPrimaries" 2023-02-01 "$tmp") || code=000
+  # Atlas explains a refusal in the body (for example a short oplog window).
+  why=$(jq -r '[.errorCode, .detail] | map(select(. != null and . != "")) | join(": ")' "$tmp" 2>/dev/null || true)
   rm -f "$tmp"
   if [[ "$code" == 2* ]]; then ok "Atlas failover test started on $cluster"
-  else FAULT_ERR="Atlas restartPrimaries returned HTTP $code"; fi
+  else FAULT_ERR="Atlas restartPrimaries returned HTTP $code${why:+ ($why)}"; fi
 }
 
 servers_do() { local i; for ((i = 1; i <= SERVER_COUNT; i++)); do rsh "$(server_ip "$i")" "$@" </dev/null >>"$LOG" 2>&1 || return 1; done; }
@@ -589,6 +616,10 @@ skip_phases() {
 }
 
 suite_load() {
+  # The load worker's pollers (WORKER_POLLERS in the profile); none keeps
+  # the SDK default.
+  local pol=()
+  [[ -n "${WORKER_POLLERS:-}" ]] && pol=(-workflow-pollers "$WORKER_POLLERS" -activity-pollers "$WORKER_POLLERS")
   local s1 lg n i c not_ready=""
   s1=$(server_ip 1); lg=$(runner_ip); n=$SERVER_COUNT
   for h in $(hosts_public); do rsh "$h" /opt/qualify/remote/sampler.sh start </dev/null >>"$LOG" 2>&1 || true; done
@@ -607,34 +638,41 @@ suite_load() {
     skip_phases "$lg" "$not_ready" ladder failover node-loss soak
     return 0
   fi
-  phase ladder "$lg" -scenarios none -ladder "$LADDER" -duration "$STEP_DURATION" -max-p99 "$MAX_P99" -max-error-rate "$MAX_ERROR_RATE"
+  phase ladder "$lg" -scenarios none -ladder "$LADDER" -duration "$STEP_DURATION" -max-p99 "$MAX_P99" -max-error-rate "$MAX_ERROR_RATE" ${pol[@]+"${pol[@]}"}
   c=$(rsh "$lg" "jq -r '.ladder.max_sustainable // 0' /opt/qualify/results/phases/ladder.json" </dev/null 2>/dev/null || echo 0)
   c=$((c * LOAD_FRACTION / 100)); ((c > 0)) || c=${LADDER%%,*}
   log "sustained phases run at concurrency $c ($LOAD_FRACTION% of the ladder maximum)"
-  phase_bg failover "$lg" -scenarios none -concurrency "$c" -duration "$FAILOVER_DURATION"
-  pause "$((FAILOVER_AT))"
-  trigger_failover
-  phase_wait failover "$lg"
+  if phase_bg failover "$lg" -scenarios none -concurrency "$c" -duration "$FAILOVER_DURATION" ${pol[@]+"${pol[@]}"}; then
+    pause "$((FAILOVER_AT))"
+    trigger_failover
+    phase_wait failover "$lg"
+  else
+    warn "phase failover failed: it did not start"; PHASE_FAILED=1
+  fi
   if ! after_failover failover "$lg"; then
     skip_phases "$lg" "the cluster did not recover from the failover" node-loss soak
     return 0
   fi
   local last; last=$(server_ip "$n")
-  phase_bg node-loss "$lg" -scenarios none -concurrency "$c" -duration "$NODE_LOSS_DURATION"
-  pause "$((NODE_LOSS_STOP_AT))"
   local fault=""
-  log "stopping server-$n"
-  rsh "$last" /opt/qualify/remote/server.sh stop </dev/null >>"$LOG" 2>&1 || fault="stopping server-$n failed"
-  pause "$((NODE_LOSS_RESTART_AT - NODE_LOSS_STOP_AT))"
-  log "restarting server-$n"
-  rsh "$last" "/opt/qualify/remote/server.sh start $VISIBILITY_MODE tmc_load" </dev/null >>"$LOG" 2>&1 ||
-    fault="${fault:+$fault; }restarting server-$n failed"
-  phase_wait node-loss "$lg"
+  if phase_bg node-loss "$lg" -scenarios none -concurrency "$c" -duration "$NODE_LOSS_DURATION" ${pol[@]+"${pol[@]}"}; then
+    pause "$((NODE_LOSS_STOP_AT))"
+    log "stopping server-$n"
+    rsh "$last" /opt/qualify/remote/server.sh stop </dev/null >>"$LOG" 2>&1 || fault="stopping server-$n failed"
+    pause "$((NODE_LOSS_RESTART_AT - NODE_LOSS_STOP_AT))"
+    log "restarting server-$n"
+    rsh "$last" "/opt/qualify/remote/server.sh start $VISIBILITY_MODE tmc_load" </dev/null >>"$LOG" 2>&1 ||
+      fault="${fault:+$fault; }restarting server-$n failed"
+    phase_wait node-loss "$lg"
+  else
+    warn "phase node-loss failed: it did not start"; PHASE_FAILED=1
+  fi
   [[ -z "$fault" ]] || fault_failed node-loss "$lg" "$fault"
   if [[ "$SOAK" != 0 ]] && ! servers_do /opt/qualify/remote/server.sh settle; then
     skip_phases "$lg" "shard ownership did not settle after the node loss" soak
   elif [[ "$SOAK" != 0 ]]; then
-    phase soak "$lg" -scenarios none -concurrency "$c" -duration "$SOAK" -timeout "$(soak_timeout "$SOAK")"
+    # Poll for as long as the runner may run the soak (its timeout).
+    PHASE_MAX_WAIT=$(soak_timeout "$SOAK" | tr -d s) phase soak "$lg" -scenarios none -concurrency "$c" -duration "$SOAK" -timeout "$(soak_timeout "$SOAK")" ${pol[@]+"${pol[@]}"}
   fi
 }
 
@@ -662,10 +700,16 @@ required_phases() {
 cmd_collect() {
   load_env; load_profile
   [[ -n "$RUN_ID" ]] || die "no run to collect"
-  local dir="$QUALIFY_HOME/artifacts/$PROFILE-$RUN_ID" name ip tmp tier mdb
+  local dir="$QUALIFY_HOME/artifacts/$PROFILE-$RUN_ID" name ip tmp tier mdb n=2
+  # A later session on the same stack gets its own directory, so a second
+  # collect never mixes with or overwrites an earlier report.
+  if [[ -e "$dir" ]]; then while [[ -e "$dir-$n" ]]; do n=$((n + 1)); done; dir="$dir-$n"; fi
   load_hosts
   tier=$(tf_out atlas_tier | jq -r .) || die "cannot read the Atlas tier from Terraform"
-  mdb=$(tf_out mongodb_version | jq -r .) || die "cannot read the MongoDB version from Terraform"
+  # The version Atlas reports, so a run after an in-place upgrade is
+  # labelled with what it ran on; Terraform's setting otherwise.
+  mdb=$(atlas_get "$(atlas_project)/clusters/$(tf_out cluster_name | jq -r .)" 2>/dev/null | jq -r '.mongoDBVersion // empty') || mdb=""
+  [[ -n "$mdb" ]] || mdb=$(tf_out mongodb_version | jq -r .) || die "cannot read the MongoDB version from Terraform"
   mkdir -p "$dir/phases" "$dir/hosts" "$dir/atlas"
   while read -r name ip; do
     log "collecting from $name"
@@ -677,6 +721,7 @@ cmd_collect() {
     if [[ -d "$tmp/phases" ]]; then cp "$tmp"/phases/*.json "$dir/phases/" 2>/dev/null || true; fi
     if [[ -f "$tmp/samples.csv" ]]; then cp "$tmp/samples.csv" "$dir/hosts/$name/"; fi
     if [[ -f "$tmp/goroutines.csv" ]]; then cp "$tmp/goroutines.csv" "$dir/hosts/$name/"; fi
+    if [[ -f "$tmp/txn.csv" ]]; then cp "$tmp/txn.csv" "$dir/hosts/$name/"; fi
     if [[ -d "$tmp/profiles" ]]; then cp -R "$tmp/profiles" "$dir/hosts/$name/"; fi
     if [[ -d "$tmp/logs" ]]; then cp -R "$tmp/logs" "$dir/hosts/$name/"; fi
     rm -rf "$tmp"

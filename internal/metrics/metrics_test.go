@@ -67,6 +67,7 @@ func TestEmitter_NilHandler_Nop(t *testing.T) {
 	e.IncError("op", "cat")
 	e.TxnStarted("op")
 	e.TxnFailed("op")
+	e.TxnLatency("op", time.Millisecond)
 	e.SizeLimitExceeded("op")
 	e.HealthStatus(true)
 	e.AtlasSearchIndexReady(false)
@@ -163,3 +164,19 @@ func stringContainsLower(s, sub string) bool {
 }
 
 var _ = fmt.Sprintf
+
+// TestEmitter_TxnMetrics_Recorded: the transaction metrics the runbook
+// tells operators to watch are actually emitted.
+func TestEmitter_TxnMetrics_Recorded(t *testing.T) {
+	h := newFakeHandler()
+	e := pmetrics.New(h)
+	e.TxnStarted("op")
+	e.TxnRetried("op")
+	e.TxnFailed("op")
+	e.TxnLatency("op", 5*time.Millisecond)
+	for _, name := range []string{pmetrics.NameTxnStarted, pmetrics.NameTxnRetried, pmetrics.NameTxnFailed, pmetrics.NameTxnLatency} {
+		if _, ok := h.series[name+"|"+pmetrics.TagOperation+"=op"]; !ok {
+			t.Errorf("%s not recorded (series: %v)", name, h.series)
+		}
+	}
+}

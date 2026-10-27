@@ -115,8 +115,21 @@ If anything is left, it exits non-zero and lists it. Re-run `down`
 once; if items persist, delete them in the console using the names it
 printed (everything is named `tmc-<run>`).
 
-Each host also terminates itself after `max_hours` (3 h functional,
-8 h load), in case teardown never runs.
+Each host also terminates itself `max_hours` after it boots (3 h
+functional, 8 h load), in case teardown never runs. The clock covers
+every phase run on the stack, not just one: a load suite with a 4-hour
+soak takes about 6 hours. For longer sessions pass `--max-hours` to
+`up` (or `all`), for example `--max-hours 14`.
+
+Atlas refuses a failover test while it reports less than 3 hours of
+oplog capacity (`OPERATION_INVALID_MEMBER_OPLOG_CAPACITY`). The load
+suite wrote about 9 GB of oplog an hour on M40 with the SDK's default
+pollers, and can write about 20 GB an hour with its 16, so the load
+profile's cluster is configured with a 160 GB disk and a 72 GB oplog.
+That sizing is calculated, not yet exercised by a run. If you override
+the tier or disk, keep the oplog large enough; a refused failover is
+recorded in the report as not injected, with Atlas's reason. See the
+sizing guide's [Oplog](../../docs/operator/sizing.md#oplog) section.
 
 ## Secrets
 

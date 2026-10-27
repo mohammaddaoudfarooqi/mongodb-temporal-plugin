@@ -5,6 +5,7 @@
 #   runner.sh PHASE [e2e flags...]
 #   runner.sh --background PHASE [e2e flags...]   start and return
 #   runner.sh --wait PHASE                        wait; exit with its code
+#   runner.sh --status PHASE                      its exit code once finished, else nothing
 #   runner.sh --fault PHASE REASON                record that PHASE's fault was not injected
 #   runner.sh --skip PHASE REASON                 record that PHASE could not run
 #   runner.sh --annotate PHASE TEXT               note the injected fault and recovery
@@ -13,7 +14,7 @@ set -euo pipefail
 . "$(dirname "$0")/common.sh"
 
 mode="foreground"
-case "${1:-}" in --background) mode="background"; shift ;; --wait) mode="wait"; shift ;; --fault) mode="fault"; shift ;; --skip) mode="skip"; shift ;; --annotate) mode="annotate"; shift ;; esac
+case "${1:-}" in --background) mode="background"; shift ;; --wait) mode="wait"; shift ;; --status) mode="status"; shift ;; --fault) mode="fault"; shift ;; --skip) mode="skip"; shift ;; --annotate) mode="annotate"; shift ;; esac
 phase=${1:?phase name required}; shift
 json="$RESULTS/phases/$phase.json"
 rcfile="$RUNDIR/$phase.rc"
@@ -33,6 +34,11 @@ if [[ "$mode" == fault ]]; then
   reason=${1:?reason required}
   [[ -s "$json" ]] || printf '{"phase":"%s"}\n' "$phase" > "$json"
   jq --arg r "$reason" '.fault_error = $r' "$json" > "$json.tmp" && mv "$json.tmp" "$json"
+  exit 0
+fi
+
+if [[ "$mode" == status ]]; then
+  [[ -f "$rcfile" ]] && cat "$rcfile"
   exit 0
 fi
 

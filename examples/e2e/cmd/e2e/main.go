@@ -49,6 +49,8 @@ func main() {
 	jsonOut := flag.String("json", "", "also write machine-readable results to this file")
 	phase := flag.String("phase", "", "phase name recorded in the -json file")
 	timeout := flag.Duration("timeout", 15*time.Minute, "overall deadline")
+	workflowPollers := flag.Int("workflow-pollers", 0, "load worker: workflow task pollers (0: SDK default)")
+	activityPollers := flag.Int("activity-pollers", 0, "load worker: activity task pollers (0: SDK default)")
 	flag.Parse()
 
 	results := report.Results{Phase: *phase, StartedAt: time.Now().Unix()}
@@ -88,7 +90,7 @@ func main() {
 		fail("search attributes: %v", err)
 	}
 
-	w := worker.New(c, app.TaskQueue, worker.Options{})
+	w := worker.New(c, app.TaskQueue, workerOptions(*workflowPollers, *activityPollers))
 	for _, wf := range app.Workflows() {
 		w.RegisterWorkflow(wf)
 	}

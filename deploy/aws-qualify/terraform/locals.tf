@@ -1,10 +1,10 @@
 locals {
   defaults = {
-    functional = { atlas = "M10", disk = 10, servers = 1, loadgen = 0, server_type = "c6i.large", loadgen_type = "c6i.large", max_hours = 3, disk_autoscale = false }
-    load       = { atlas = "M30", disk = 40, servers = 2, loadgen = 1, server_type = "c6i.2xlarge", loadgen_type = "c6i.xlarge", max_hours = 8, disk_autoscale = false }
+    functional = { atlas = "M10", disk = 10, servers = 1, loadgen = 0, server_type = "c6i.large", loadgen_type = "c6i.large", max_hours = 3, disk_autoscale = false, oplog_mb = 0 }
+    load       = { atlas = "M30", disk = 160, servers = 2, loadgen = 1, server_type = "c6i.2xlarge", loadgen_type = "c6i.xlarge", max_hours = 8, disk_autoscale = false, oplog_mb = 72000 }
     # A lasting deployment: no self-terminate; storage auto-scaling, which
     # Atlas automated embedding (vector search) requires.
-    quickstart = { atlas = "M10", disk = 10, servers = 1, loadgen = 0, server_type = "c6i.large", loadgen_type = "c6i.large", max_hours = 0, disk_autoscale = true }
+    quickstart = { atlas = "M10", disk = 10, servers = 1, loadgen = 0, server_type = "c6i.large", loadgen_type = "c6i.large", max_hours = 0, disk_autoscale = true, oplog_mb = 0 }
   }
   p = local.defaults[var.profile]
 

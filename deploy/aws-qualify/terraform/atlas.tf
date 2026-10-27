@@ -28,6 +28,14 @@ resource "mongodbatlas_advanced_cluster" "cluster" {
     }
   ]
 
+  # Atlas refuses a failover test below 3 hours of oplog capacity. With
+  # 16 load-worker pollers the load suite can write about 20 GB of oplog
+  # an hour (measured on M40), so the load profile sizes it for that.
+  # 0 keeps Atlas's default.
+  advanced_configuration = {
+    oplog_size_mb = local.p.oplog_mb > 0 ? local.p.oplog_mb : null
+  }
+
   tags = local.atlas_tags
 
   timeouts = {

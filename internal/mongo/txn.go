@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -71,6 +72,54 @@ func WithTxn[T any](
 		return zero, err
 	}
 	return typed, nil
+}
+
+// TxnObserver receives transaction lifecycle events; *metrics.Emitter
+// implements it.
+type TxnObserver interface {
+	TxnStarted(op string)
+	TxnRetried(op string)
+	TxnFailed(op string)
+	TxnLatency(op string, d time.Duration)
+}
+
+// ObserveTxns reports runner's transactions to obs under op. Every
+// callback run after the first is a retry: the driver re-runs the
+// callback on TransientTransactionError, which includes write conflicts.
+// It only counts; the driver's loop still does the retrying. A nil obs
+// returns runner unchanged; pass an untyped nil, not a nil *Emitter
+// held in the interface, which is not nil.
+func ObserveTxns(runner TxnRunner, obs TxnObserver, op string) TxnRunner {
+	if obs == nil {
+		return runner
+	}
+	return observedRunner{r: runner, obs: obs, op: op}
+}
+
+type observedRunner struct {
+	r   TxnRunner
+	obs TxnObserver
+	op  string
+}
+
+func (o observedRunner) WithTransaction(
+	ctx context.Context,
+	fn func(ctx context.Context) (any, error),
+	opts ...options.Lister[options.TransactionOptions],
+) (any, error) {
+	o.obs.TxnStarted(o.op)
+	start, runs := time.Now(), 0
+	out, err := o.r.WithTransaction(ctx, func(c context.Context) (any, error) {
+		if runs++; runs > 1 {
+			o.obs.TxnRetried(o.op)
+		}
+		return fn(c)
+	}, opts...)
+	o.obs.TxnLatency(o.op, time.Since(start))
+	if err != nil {
+		o.obs.TxnFailed(o.op)
+	}
+	return out, err
 }
 
 // NewSessionRunner adapts a live *mongo.Session into the TxnRunner

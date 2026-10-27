@@ -87,7 +87,7 @@ func (s *Stub) CreateWorkflowExecution(
 	}
 	defer sess.EndSession(ctx)
 
-	_, err = internalmongo.WithTxn[struct{}](ctx, internalmongo.NewSessionRunner(sess),
+	_, err = internalmongo.WithTxn[struct{}](ctx, s.txnRunner(sess, "CreateWorkflowExecution"),
 		func(sctx context.Context) (struct{}, error) {
 			// Shard RangeID check.
 			if err := s.assertShardRange(sctx, req.ShardID, req.RangeID); err != nil {
@@ -396,7 +396,7 @@ func (s *Stub) ConflictResolveWorkflowExecution(
 	}
 	defer sess.EndSession(ctx)
 
-	_, err = internalmongo.WithTxn[struct{}](ctx, internalmongo.NewSessionRunner(sess),
+	_, err = internalmongo.WithTxn[struct{}](ctx, s.txnRunner(sess, "ConflictResolveWorkflowExecution"),
 		func(sctx context.Context) (struct{}, error) {
 			if err := s.assertShardRange(sctx, req.ShardID, req.RangeID); err != nil {
 				return struct{}{}, err
@@ -513,7 +513,7 @@ func (s *Stub) UpdateWorkflowExecution(
 	}
 	defer sess.EndSession(ctx)
 
-	_, err = internalmongo.WithTxn[struct{}](ctx, internalmongo.NewSessionRunner(sess),
+	_, err = internalmongo.WithTxn[struct{}](ctx, s.txnRunner(sess, "UpdateWorkflowExecution"),
 		func(sctx context.Context) (struct{}, error) {
 			if err := s.assertShardRange(sctx, req.ShardID, req.RangeID); err != nil {
 				return struct{}{}, err
@@ -670,7 +670,7 @@ func (s *Stub) SetWorkflowExecution(
 		return internalmongo.Translate(err, "executionstore.SetWorkflowExecution.session")
 	}
 	defer sess.EndSession(ctx)
-	_, err = internalmongo.WithTxn[struct{}](ctx, internalmongo.NewSessionRunner(sess),
+	_, err = internalmongo.WithTxn[struct{}](ctx, s.txnRunner(sess, "SetWorkflowExecution"),
 		func(sctx context.Context) (struct{}, error) {
 			if err := s.assertShardRange(sctx, req.ShardID, req.RangeID); err != nil {
 				return struct{}{}, err

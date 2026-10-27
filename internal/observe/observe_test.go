@@ -2,6 +2,7 @@ package observe_test
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -9,6 +10,7 @@ import (
 
 	"go.temporal.io/server/common/log"
 	tmetrics "go.temporal.io/server/common/metrics"
+	"go.temporal.io/server/common/persistence"
 
 	pluginmetrics "github.com/mohammaddaoudfarooqi/mongodb-temporal-plugin/internal/metrics"
 	"github.com/mohammaddaoudfarooqi/mongodb-temporal-plugin/internal/observe"
@@ -110,5 +112,26 @@ func TestOp_NilEmitter_NoOp(t *testing.T) {
 	}()
 	if err == nil || err.Error() != "nil-safe" {
 		t.Errorf("nil-emitter wrapper must not swallow the error: got %v", err)
+	}
+}
+
+// TestOp_TransactionSizeLimit_CountsSizeLimitExceeded: a write refused
+// for size is visible as its own metric, not only as an error.
+func TestOp_TransactionSizeLimit_CountsSizeLimitExceeded(t *testing.T) {
+	h := newCountingHandler()
+	em := pluginmetrics.New(h).ForStore("executionstore")
+	func() (retErr error) {
+		defer observe.Op(em, "AppendHistoryNodes")(&retErr)
+		return fmt.Errorf("wrapped: %w", &persistence.TransactionSizeLimitError{Msg: "too big"})
+	}()
+	if n := h.get(pluginmetrics.NameSizeLimitExceeded); n != 1 {
+		t.Errorf("size-limit counter: got %d want 1", n)
+	}
+	func() (retErr error) {
+		defer observe.Op(em, "AppendHistoryNodes")(&retErr)
+		return errors.New("other failure")
+	}()
+	if n := h.get(pluginmetrics.NameSizeLimitExceeded); n != 1 {
+		t.Errorf("an ordinary error bumped the size-limit counter: %d", n)
 	}
 }

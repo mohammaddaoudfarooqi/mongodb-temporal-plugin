@@ -67,7 +67,8 @@ Design choices worth knowing (the decision records are in
 | | Tested |
 |---|---|
 | Temporal server | 1.31 and 1.32 (latest patches) |
-| MongoDB | 6.0, 7.0, 8.0, 8.2, 8.3 and 9.0 replica sets; Atlas M10 and larger |
+| MongoDB | 6.0, 7.0, 8.0, 8.2, 8.3 and 9.0 replica sets |
+| Atlas | M10 and larger; load-tested on M30 (MongoDB 8.0) and M40 (8.0 and 9.0), including an in-place upgrade from 8.0 to 9.0 under load ([results](docs/operator/sizing.md#what-was-measured)) |
 | Visibility `atlas-search` | Atlas M10+, MongoDB 8.2 and 8.3 with search (`mongodb-atlas-local`) |
 | Go | 1.26 |
 

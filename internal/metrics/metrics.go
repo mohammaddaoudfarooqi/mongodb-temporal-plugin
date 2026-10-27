@@ -123,6 +123,13 @@ func (e *Emitter) TxnFailed(op string) {
 	e.h.Counter(NameTxnFailed).Record(1, tmetrics.Tag{Key: TagOperation, Value: op})
 }
 
+// TxnLatency records a transaction's duration, all driver attempts
+// included.
+func (e *Emitter) TxnLatency(op string, d time.Duration) {
+	e.h.Histogram(NameTxnLatency, tmetrics.Milliseconds).
+		Record(d.Milliseconds(), tmetrics.Tag{Key: TagOperation, Value: op})
+}
+
 // SizeLimitExceeded bumps when an execution-doc write is rejected at
 // the 12 MB payload budget.
 func (e *Emitter) SizeLimitExceeded(op string) {

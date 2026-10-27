@@ -106,9 +106,9 @@ case "$method $url" in
   "GET "*/containers*) body='{"results":[]}'
     [ -f "$T/containers.json" ] && body=$(cat "$T/containers.json")
     [ -n "${CONTAINERS_JSON:-}" ] && body=$CONTAINERS_JSON ;;
-  *"/clusters/tmc-"*/restartPrimaries) code=${RESTART_CODE:-200} ;;
+  *"/clusters/tmc-"*/restartPrimaries) code=${RESTART_CODE:-200}; [ -n "${RESTART_BODY:-}" ] && body=$RESTART_BODY ;;
   *"/clusters/tmc-"*) if ls "$T"/destroyed-* >/dev/null 2>&1 && [ -z "${LEFTOVER_CLUSTER:-}" ]; then code=404
-    else body="{\"name\":\"tmc-t\",\"stateName\":\"${CLUSTER_STATE:-IDLE}\"}"; fi ;;
+    else body="{\"name\":\"tmc-t\",\"stateName\":\"${CLUSTER_STATE:-IDLE}\",\"mongoDBVersion\":\"${CLUSTER_VERSION:-}\"}"; fi ;;
   *"/peers"*) items=""
     for f in "$T"/applied-*; do
       [ -e "$f" ] || continue; w=${f##*/applied-}; [ -e "$T/destroyed-$w" ] && continue
@@ -127,7 +127,7 @@ SH
   cat > "$STUB_FIXTURES/scp.sh" <<'SH'
 dst="${@: -1}"
 case "$*" in
-  *:/opt/qualify/results*) mkdir -p "$dst/phases"; echo '{"phase":"smoke-aggregation"}' > "$dst/phases/smoke-aggregation.json"; echo "ts,cpu_pct,mem_used_pct,server_rss_kb" > "$dst/samples.csv"; mkdir -p "$dst/profiles"; : > "$dst/profiles/heap-1.pb.gz"; echo "ts,goroutines" > "$dst/goroutines.csv" ;;
+  *:/opt/qualify/results*) mkdir -p "$dst/phases"; echo '{"phase":"smoke-aggregation"}' > "$dst/phases/smoke-aggregation.json"; echo "ts,cpu_pct,mem_used_pct,server_rss_kb" > "$dst/samples.csv"; mkdir -p "$dst/profiles"; : > "$dst/profiles/heap-1.pb.gz"; echo "ts,goroutines" > "$dst/goroutines.csv"; echo "ts,operation" > "$dst/txn.csv" ;;
 esac
 SH
 }
@@ -167,6 +167,89 @@ secrets_absent() {
   grep -q URIPASSWORD3 "$CALLS.stdin"
   grep -q -- "curl .*-K" "$CALLS"
   ! grep -v -- "-rw-------" "$BATS_TEST_TMPDIR/curlrc.modes"
+}
+
+@test "collect records the MongoDB version Atlas reports, so an in-place upgrade shows" {
+  bash "$CT" up --profile functional >/dev/null
+  run_id=$(cat "$QUALIFY_HOME/.run/functional/run_id")
+  CLUSTER_VERSION=9.0.4 run bash "$CT" collect --profile functional
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  grep -q '"mongodb_version": "9.0.4"' "$QUALIFY_HOME/artifacts/functional-$run_id/meta.json"
+}
+
+@test "--max-hours sets the hosts' lifetime, so a long run is not cut short" {
+  run bash "$CT" up --profile load --max-hours 14
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  grep -qx 'max_hours=14' "$QUALIFY_HOME/.run/load/tfvars.args"
+}
+
+@test "--max-hours must be a whole number of hours" {
+  run bash "$CT" up --profile load --max-hours 2h
+  [ "$status" -ne 0 ]
+}
+
+@test "a second collect of the same run never overwrites the first" {
+  bash "$CT" up --profile functional >/dev/null
+  run_id=$(cat "$QUALIFY_HOME/.run/functional/run_id")
+  bash "$CT" collect --profile functional >/dev/null
+  echo first > "$QUALIFY_HOME/artifacts/functional-$run_id/marker"
+  run bash "$CT" collect --profile functional
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(cat "$QUALIFY_HOME/artifacts/functional-$run_id/marker")" = first ]
+  [ "$(ls -d "$QUALIFY_HOME/artifacts/functional-$run_id"* | wc -l)" -eq 2 ]
+}
+
+@test "load phases run the worker with the profile's pollers, so the client is not the limit" {
+  export FIXTURE_PROFILE=load
+  bash "$CT" up --profile load >/dev/null
+  run bash "$CT" run --profile load
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  for p in ladder failover node-loss soak; do
+    grep -E "runner.sh --background $p .*-workflow-pollers 16 -activity-pollers 16" "$CALLS" >/dev/null || { echo "no pollers for $p"; return 1; }
+  done
+}
+
+@test "a background phase that fails to start fails at once, without polling" {
+  export FIXTURE_PROFILE=load
+  bash "$CT" up --profile load >/dev/null
+  cat > "$STUB_FIXTURES/ssh.sh" <<'SH'
+case "$*" in *"runner.sh --background failover"*) exit 1 ;; esac
+exit 0
+SH
+  run bash "$CT" run --profile load
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"phase failover failed"* ]]
+  ! grep -q "runner.sh --status failover" "$CALLS"
+}
+
+@test "a node-loss phase that fails to start fails the run cleanly" {
+  export FIXTURE_PROFILE=load
+  bash "$CT" up --profile load >/dev/null
+  cat > "$STUB_FIXTURES/ssh.sh" <<'SH'
+case "$*" in *"runner.sh --background node-loss"*) exit 1 ;; esac
+exit 0
+SH
+  run bash "$CT" run --profile load
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"phase node-loss failed: it did not start"* ]]
+  [[ "$output" != *"unbound variable"* ]]
+}
+
+@test "phases start in the background and are polled with short SSH calls" {
+  bash "$CT" up --profile functional >/dev/null
+  run bash "$CT" run --profile functional
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  grep -q "runner.sh --background smoke-aggregation" "$CALLS"
+  grep -q "runner.sh --status smoke-aggregation" "$CALLS"
+  ! grep -qE "runner.sh (smoke-aggregation|sanity-load|--wait)" "$CALLS"
+  grep -q -- "-o ServerAliveInterval=" "$CALLS"
+}
+
+@test "a phase whose recorded exit code is non-zero fails the run" {
+  bash "$CT" up --profile functional >/dev/null
+  STUB_PHASE_RC=1 run bash "$CT" run --profile functional
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"phase smoke-aggregation failed"* ]]
 }
 
 @test "all tears down even when a phase fails" {
@@ -228,6 +311,7 @@ SH
   [ -f "$dir/phases/smoke-aggregation.json" ]
   [ -f "$dir/hosts/server-1/samples.csv" ]
   [ -f "$dir/hosts/server-1/goroutines.csv" ]
+  [ -f "$dir/hosts/server-1/txn.csv" ]
   [ -f "$dir/hosts/server-1/profiles/heap-1.pb.gz" ]
 }
 
@@ -308,6 +392,14 @@ SH
   grep -q "runner.sh --fault failover" "$CALLS"
 }
 
+@test "a refused failover records Atlas's reason, not just the status" {
+  export RESTART_CODE=400 RESTART_BODY='{"errorCode":"OPERATION_INVALID_MEMBER_OPLOG_CAPACITY","detail":"insufficient oplog capacity (0.3 hours) (3 hours required)."}'
+  run bash "$CT" all --profile functional --yes
+  [ "$status" -ne 0 ]
+  grep -q "OPERATION_INVALID_MEMBER_OPLOG_CAPACITY" "$CALLS"
+  [[ "$output" == *"insufficient oplog capacity"* ]]
+}
+
 @test "deploy without --ref uses the ref saved by up" {
   run bash "$CT" up --profile functional --ref v1.2.0
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
@@ -384,7 +476,7 @@ SH
   bash "$CT" up --profile functional >/dev/null
   run bash "$CT" run --profile functional
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  s=$(grep -n "runner.sh sanity-load" "$CALLS" | head -1 | cut -d: -f1)
+  s=$(grep -n "runner.sh --background sanity-load" "$CALLS" | head -1 | cut -d: -f1)
   f=$(grep -n "runner.sh --background failover" "$CALLS" | head -1 | cut -d: -f1)
   [ -n "$s" ] && [ -n "$f" ] && [ "$s" -lt "$f" ]
 }

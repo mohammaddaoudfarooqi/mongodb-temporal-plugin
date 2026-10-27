@@ -1,55 +1,95 @@
 # Sizing guidance
 
-Rough sizing reference. Validate with your own workload before committing.
+Measured on Atlas with the release-qualification harness
+([`deploy/aws-qualify`](../../deploy/aws-qualify)), unless a section says
+otherwise. Validate with your own workload: the numbers below come from
+one test workflow and one deployment shape.
 
-## Units
+## What was measured
 
-Temporal uses **state transitions per second (STPS)** as the internal load
-unit. One STPS = one workflow event persisted = roughly one multi-document
-transaction in this plugin's execution store.
+Each run used one AWS region (`us-east-1`), VPC peering to Atlas, two
+Temporal server hosts (`c6i.2xlarge`, 512 history shards), one load
+generator, and the qualification order workflow: about 16 execution
+transactions per workflow (15 updates and 1 create), with a small
+history.
 
-## Atlas tier recommendations
+| Atlas tier | MongoDB | Load worker pollers | Sustained throughput | Transactions/s | p50 / p99 workflow latency | Limited by |
+|---|---|---|---|---|---|---|
+| M30 | 8.0 | 2 + 2 (SDK default) | about 20 workflows/s | about 330 | not recorded | not determined (not re-run with more pollers) |
+| M40 | 8.0 | 2 + 2 | about 31–33 workflows/s | about 510 | 1.0 s / 6.1 s | the load worker |
+| M40 | 9.0 | 2 + 2 | about 34–35 workflows/s | about 560 | 0.9 s / 6.0 s | the load worker |
+| **M40** | **9.0** | **16 + 16** | **about 74–76 workflows/s** | **about 1,100–1,200** | 0.7 s / 1.0 s at concurrency 50; 1.7 s / 6.5 s at 200 | **database CPU** |
 
-| Tier | Safe sustained STPS (unsharded) | Comfortable workload profile |
-|------|--------------------------------|------------------------------|
-| M30  | 300–800 | Dev, staging, small production |
-| M40  | 1,000–2,500 | Small production with headroom |
-| M60  | 3,000–6,000 | Mid production |
-| M100 | 4,000–8,000 | Mid production, generous headroom |
-| M200 | 15,000–25,000 | Large production |
-| Sharded M200 × N | ~20,000 × N | Cassandra-tier workloads |
+"Pollers" are the load generator's workflow and activity task pollers.
+With the Go SDK's defaults (two of each) the worker, not the database,
+set the ceiling: on M40 the cluster had headroom (mongod CPU about 61%,
+transactions flat at about 11 ms). With 16 of each, throughput rose
+2.2× on the same cluster and the database became the limit: mongod CPU
+about 75%, I/O wait about 0.1%, and transaction time up to about 42 ms
+as transactions queued. Size your own workers' pollers for your
+throughput; see Temporal's worker tuning guidance.
 
-These numbers assume:
+On MongoDB 9.0, where the plugin's transaction metrics were recorded,
+no transaction was retried at any load, including the database-bound
+one, so transactions did not conflict on the per-shard fence.
 
-- Single-region deployment, co-located workers.
-- `w: majority` writes (which Temporal requires).
-- Majority-snapshot reads inside transactions.
-- Provisioned IOPS, not burstable, above M40.
+The longest runs:
 
-See `docs/operator/runbook.md` for the symptoms of approaching each ceiling.
+| Tier | MongoDB | Run | Workflows |
+|---|---|---|---|
+| M30 | 8.0 | soak | 144,847 of 144,847 |
+| M40 | 8.0 | 4-hour soak | 478,819 of 478,819 |
+| M40 | 8.0 → 9.0 | 45 minutes through an in-place upgrade | 93,771 of 93,771 |
+| M40 | 9.0 | 1-hour soak | 127,281 of 127,281 |
 
-## Self-hosted equivalents
+Every run also passed an Atlas primary failover and the loss and restart
+of a Temporal server host with no failed workflows. On 9.0, Atlas first
+refused the failover test because of the oplog (see [Oplog](#oplog));
+after the oplog was enlarged online, with no failed workflows during the
+change, the failover passed: 22,161 of 22,161. During the in-place upgrade from
+MongoDB 8.0 to 9.0 under load, no workflow or transaction failed; the
+driver retried at least 19 transactions during the primary election.
 
-Assume the same MongoDB version, WT cache sized at ~60% of RAM, local
-NVMe, and 25+ GbE networking. Self-hosted throughput can beat Atlas by
-20–40% at the same nominal hardware class because noisy-neighbor and
-shared-backplane effects disappear.
+## Storage
 
-## The first thing to saturate
+Per workflow of the test workload (about 561,000 workflows measured):
 
-On M30–M60, **IOPS** is the first binding resource — every transaction
-writes to three collections plus the oplog. Provision IOPS ≥ 3× the
-baseline if sustained writes exceed a few hundred STPS.
+| Collection | Share of data | Per workflow |
+|---|---|---|
+| `history_nodes` | about 65% | about 8 KB (about 12 documents) |
+| `executions` | about 14% | about 1.8 KB |
+| `visibility_executions` | about 10% | about 1.3 KB |
+| the rest | about 11% | about 1.3 KB |
 
-On M100 and above, **CPU** becomes the bottleneck before storage.
+About 12.5 KB per workflow uncompressed, and about 6 KB on disk
+including indexes. History dominates, and grows with the workflow's
+events and payloads, so namespace retention is the main lever on
+storage.
 
-## Write amplification rule of thumb
+## Oplog
 
-Temporal adds roughly **30–50% write amplification** on top of the
-business application's own write load at steady state, more at peak
-because of history append bursts. When co-locating Temporal with an
-application database on the same cluster, size the cluster for
-`(business_peak_QPS × 1.5)`, not `business_peak_QPS`.
+Temporal rewrites a workflow's state on every transition and inserts
+and deletes tasks continuously, so the oplog grows much faster than the
+data: about **76 KB of oplog per workflow** on the test workload, about
+9 GB per hour at 33 workflows/s on M40. With the default oplog (about
+1.9 GB on a 40 GB disk), the oplog window was about 12 minutes.
+
+A short window means a secondary that is offline for longer than that
+needs a full initial sync. Atlas also refuses a failover test
+(`OPERATION_INVALID_MEMBER_OPLOG_CAPACITY`) while it reports less than
+3 hours of oplog capacity; with the default oplog, Atlas reported 1.3
+hours for the M40. Enlarging the oplog to 28 GB, an online change, fixed
+it, and the failover test then passed. Size the oplog from your write
+rate:
+
+- On Atlas, set a **minimum oplog window**
+  (`oplogMinRetentionHours`, under Additional Settings) together with
+  storage auto-scaling, or set the oplog size explicitly.
+- Oplog needed = oplog rate × window. The rate scales with throughput,
+  at about 76 KB per workflow of the test workload: 9 GB/h at 33
+  workflows/s, about 20 GB/h at 75. At 9 GB/h, a 6-hour window needs
+  about 55 GB.
+- Watch the oplog window and oplog rate in Atlas monitoring.
 
 ## Visibility considerations
 
@@ -87,21 +127,56 @@ so the plateau rises with load, up to the entry cap.
 - Set `GOMEMLIMIT` (for example 80% of the container's memory limit) to
   keep RSS close to the live heap.
 
+## Document size limits
+
+MongoDB caps a document at 16 MB. Temporal's own limits keep every
+document the plugin writes well below that:
+
+| Collection | Bounded by (Temporal default) | Largest document |
+|---|---|---|
+| `executions` | `limit.mutableStateSize.error` (8 MB); at most 2,000 pending activities, child workflows, signals and cancellation requests each | about 8 MB |
+| `history_nodes` (one batch of events) | `system.transactionSizeLimit` (4 MB); `limit.blobSize.error` (2 MB per payload) | about 4 MB |
+| `visibility_executions` | `limit.memoSize.error` (2 MB), plus the search attribute size limits | about 2 MB |
+| everything else | fixed-shape records | kilobytes |
+
+When a workflow reaches one of these limits, Temporal terminates it with
+the reason "transaction size exceeds limit": the write fails, and nothing
+is partly written. The plugin adds a 12 MB check on execution documents
+and on history batches, which returns the same error, so raising
+Temporal's limits cannot make those documents fail with a MongoDB
+`BSONObjectTooLarge` error that Temporal would keep retrying. Visibility
+records have no such check; they stay within Temporal's memo and search
+attribute limits.
+
+**Do not raise `limit.mutableStateSize.error` or
+`system.transactionSizeLimit` above 12 MB** on this backend: workflows
+would then be terminated at 12 MB instead.
+
+Workflows that come close to these limits in practice:
+
+- **Wide fan-out from one workflow:** hundreds of pending activities or
+  child workflows, each carrying a large heartbeat or a large result,
+  all in one workflow's state.
+- **Large payloads in one step:** a workflow task that schedules many
+  activities with large inputs at once puts them all in one history
+  batch.
+- **Signal or update storms:** many large signals or updates that arrive
+  while a workflow task is running are buffered in the workflow's state
+  until it completes.
+- **Large memos or search attributes.**
+
+The usual remedies are Temporal's: keep large data outside the workflow
+and pass references to it, split fan-out across child workflows, and use
+continue-as-new before the history grows large.
+
 ## What hurts you if you don't plan for it
 
-- **History collection growth.** Use Atlas Online Archive or a retention
-  policy. Without it, expect index-cache pressure at ~100M+ historical
-  workflows.
+- **History collection growth.** History is about two-thirds of the
+  data (see [Storage](#storage)). Set namespace retention, and use
+  Atlas Online Archive if you need to keep closed workflows longer.
 - **Hot-workflow contention.** A single workflow emitting events at
   extreme rates serializes on its executions document. No backend
   mitigates this at the plugin level; this is a workflow-design question.
 - **Cross-region replica set.** Every state transition waits for majority
   ack. Cross-region majorities add tens of milliseconds per operation.
   Keep the primary and worker region co-located.
-
-## Targets per plugin release
-
-- `UpdateWorkflowExecution` p99 < 50 ms at 500 STPS sustained on an M30.
-
-These numbers are aspirational load-test gates, not production guarantees
-for arbitrary workloads.

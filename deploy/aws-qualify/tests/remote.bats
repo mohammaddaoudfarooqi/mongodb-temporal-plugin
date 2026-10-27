@@ -67,6 +67,14 @@ SH
   [ -f "$R/results/phases/failover.json" ]
 }
 
+@test "runner.sh --status prints the exit code only once the phase has finished" {
+  run bash "$REMOTE/runner.sh" --status ladder
+  [ "$status" -eq 0 ] && [ -z "$output" ]
+  echo 3 > "$R/run/ladder.rc"
+  run bash "$REMOTE/runner.sh" --status ladder
+  [ "$status" -eq 0 ] && [ "$output" = 3 ]
+}
+
 # --- server.sh ---
 
 fake_tool() { # fails the first $1 calls, then succeeds
@@ -211,6 +219,29 @@ PY
   RENDER_ONLY=1 WORKDIR="$W.off" TEMPORAL_MONGO_URI=mongodb://h/ \
     run bash "$repo/examples/e2e/scripts/run-native-server.sh"
   ! grep -q pprof "$W.off/development.yaml"
+}
+
+@test "a txn snapshot records transaction counters per operation from the server's metrics" {
+  mkdir -p "$BATS_TEST_TMPDIR/mbin"
+  cat > "$BATS_TEST_TMPDIR/mbin/curl" <<'SH'
+#!/usr/bin/env bash
+cat <<'M'
+# HELP persistence_mongo_transactions_started_total x
+persistence_mongo_transactions_started_total{operation="UpdateWorkflowExecution",service_name="history",store="executionstore"} 1000
+persistence_mongo_transactions_retried_total{operation="UpdateWorkflowExecution",service_name="history",store="executionstore"} 37
+persistence_mongo_transactions_failed_total{operation="UpdateWorkflowExecution",service_name="history",store="executionstore"} 2
+persistence_mongo_transaction_latency_ms_sum{operation="UpdateWorkflowExecution",service_name="history",store="executionstore"} 41000
+persistence_mongo_transaction_latency_ms_count{operation="UpdateWorkflowExecution",service_name="history",store="executionstore"} 1000
+persistence_mongo_transaction_latency_ms_bucket{operation="UpdateWorkflowExecution",le="50"} 900
+persistence_mongo_op_total{operation="GetWorkflowExecution"} 5
+M
+SH
+  chmod +x "$BATS_TEST_TMPDIR/mbin/curl"
+  PATH="$BATS_TEST_TMPDIR/mbin:$PATH" run bash "$REMOTE/sampler.sh" txn
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  head -1 "$R/results/txn.csv" | grep -q '^ts,operation,started,retried,failed,latency_ms_sum,latency_count$'
+  tail -1 "$R/results/txn.csv" | grep -Eq '^[0-9]+,UpdateWorkflowExecution,1000,37,2,41000,1000$'
+  [ "$(wc -l < "$R/results/txn.csv")" -eq 2 ]
 }
 
 # --- gates.sh ---

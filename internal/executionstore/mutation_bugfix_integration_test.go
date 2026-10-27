@@ -17,6 +17,7 @@ import (
 	commonpb "go.temporal.io/api/common/v1"
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/serviceerror"
+	persistencespb "go.temporal.io/server/api/persistence/v1"
 	"go.temporal.io/server/common/persistence"
 	txTasks "go.temporal.io/server/service/history/tasks"
 
@@ -290,6 +291,42 @@ func lastOplogEntry(t *testing.T, db *mongo.Database, filter bson.D) bson.Timest
 		t.Fatalf("oplog lookup %v: %v", filter, err)
 	}
 	return entry.TS
+}
+
+// TestUpdate_OversizedHistoryBatch_TransactionSizeLimit: an update whose
+// new history batch cannot fit in one document fails with
+// TransactionSizeLimitError, and the execution is left as it was.
+func TestUpdate_OversizedHistoryBatch_TransactionSizeLimit(t *testing.T) {
+	db := startDB(t)
+	seedShard(t, db, 1, 1)
+	s := executionstore.New(db, "cluster0")
+	ctx := context.Background()
+	snap := makeSnapshot("ns", "wf-bigbatch", "run-1")
+	mustCreate(t, s, persistence.CreateWorkflowModeBrandNew, snap)
+
+	mut := nextMutation(snap)
+	err := s.UpdateWorkflowExecution(ctx, &persistence.InternalUpdateWorkflowExecutionRequest{
+		ShardID: 1, RangeID: 1, Mode: persistence.UpdateWorkflowModeUpdateCurrent,
+		UpdateWorkflowMutation: mut,
+		UpdateWorkflowNewEvents: []*persistence.InternalAppendHistoryNodesRequest{{
+			BranchInfo: &persistencespb.HistoryBranch{TreeId: "tree-bigbatch", BranchId: "branch-bigbatch"},
+			Node: persistence.InternalHistoryNode{NodeID: 2, TransactionID: 2,
+				Events: &commonpb.DataBlob{EncodingType: enumspb.ENCODING_TYPE_PROTO3, Data: bytes.Repeat([]byte("e"), 13<<20)}},
+		}},
+	})
+	var tooBig *persistence.TransactionSizeLimitError
+	if !errors.As(err, &tooBig) {
+		t.Fatalf("want TransactionSizeLimitError; got %T %v", err, err)
+	}
+	got, err := s.GetWorkflowExecution(ctx, &persistence.GetWorkflowExecutionRequest{
+		ShardID: 1, NamespaceID: "ns", WorkflowID: "wf-bigbatch", RunID: "run-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State.NextEventID != 2 {
+		t.Fatalf("the update was partially written: NextEventID %d", got.State.NextEventID)
+	}
 }
 
 func TestUpdate_OverSizeBudget_TransactionSizeLimit(t *testing.T) {

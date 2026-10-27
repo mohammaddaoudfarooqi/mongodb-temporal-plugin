@@ -4,6 +4,7 @@
 # Bash 3.2 compatible (macOS /bin/bash): a plain array, no mapfile.
 remote_init() {
   SSH_OPTS=(-i "$SSH_PRIVATE_KEY_PATH" -o BatchMode=yes -o ConnectTimeout=15
+    -o ServerAliveInterval=30 -o ServerAliveCountMax=6
     -o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=$RUN/known_hosts" -o LogLevel=ERROR)
 }
 

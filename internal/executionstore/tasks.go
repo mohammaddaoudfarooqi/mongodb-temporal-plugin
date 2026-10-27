@@ -72,7 +72,7 @@ func (s *Stub) AddHistoryTasks(
 	}
 	defer sess.EndSession(ctx)
 
-	_, err = internalmongo.WithTxn[struct{}](ctx, internalmongo.NewSessionRunner(sess),
+	_, err = internalmongo.WithTxn[struct{}](ctx, s.txnRunner(sess, "AddHistoryTasks"),
 		func(sctx context.Context) (struct{}, error) {
 			if err := s.assertShardRange(sctx, req.ShardID, req.RangeID); err != nil {
 				return struct{}{}, err

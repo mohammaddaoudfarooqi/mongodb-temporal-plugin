@@ -17,7 +17,10 @@
 package observe
 
 import (
+	"errors"
 	"time"
+
+	"go.temporal.io/server/common/persistence"
 
 	"github.com/mohammaddaoudfarooqi/mongodb-temporal-plugin/internal/metrics"
 	internalmongo "github.com/mohammaddaoudfarooqi/mongodb-temporal-plugin/internal/mongo"
@@ -44,6 +47,10 @@ func Op(e *metrics.Emitter, op string) func(*error) {
 		e.ObserveLatency(op, time.Since(start))
 		if errPtr != nil && *errPtr != nil {
 			e.IncError(op, string(internalmongo.Categorize(*errPtr)))
+			var tooBig *persistence.TransactionSizeLimitError
+			if errors.As(*errPtr, &tooBig) {
+				e.SizeLimitExceeded(op)
+			}
 		}
 	}
 }

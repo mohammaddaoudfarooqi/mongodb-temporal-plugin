@@ -38,6 +38,15 @@ go run ./cmd/e2e -address localhost:7233
 go run ./cmd/e2e -scenarios none -load 500 -concurrency 50
 ```
 
+For load tests, raise the load worker's task pollers: with the Go SDK's
+defaults (two workflow and two activity pollers) the worker, not the
+server, caps throughput. On Atlas M40, 16 of each doubled throughput:
+
+```bash
+go run ./cmd/e2e -scenarios none -concurrency 200 -duration 10m \
+  -workflow-pollers 16 -activity-pollers 16
+```
+
 Against any running Temporal server backed by the plugin (for example a
 native `temporal-mongodb-server` pointed at Atlas, see
 `scripts/run-native-server.sh`):

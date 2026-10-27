@@ -54,6 +54,16 @@ run "load_profile_is_production_shaped" {
     condition     = mongodbatlas_advanced_cluster.cluster.replication_specs[0].region_configs[0].electable_specs.instance_size == "M30"
     error_message = "load must default to M30"
   }
+  # Atlas refuses a failover test below 3 hours of oplog capacity; the
+  # load profile's write rate needs a large oplog to reach it.
+  assert {
+    condition     = mongodbatlas_advanced_cluster.cluster.advanced_configuration.oplog_size_mb == 72000
+    error_message = "load must size the oplog for its write rate (72 GB)"
+  }
+  assert {
+    condition     = mongodbatlas_advanced_cluster.cluster.replication_specs[0].region_configs[0].electable_specs.disk_size_gb == 160
+    error_message = "load needs a 160 GB disk to hold the 72 GB oplog"
+  }
 }
 
 run "load_profile_overrides" {

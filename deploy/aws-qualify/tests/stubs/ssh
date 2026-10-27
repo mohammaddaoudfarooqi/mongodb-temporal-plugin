@@ -6,6 +6,11 @@ printf '%s %s\n' "$name" "$*" >> "$CALLS"
 if [ "$name" = ssh ] && [ ! -t 0 ]; then
   cat >> "$CALLS.stdin"
 fi
+# A phase polled with runner.sh --status has finished, with
+# $STUB_PHASE_RC (default 0).
+if [ "$name" = ssh ]; then
+  case "$*" in *"runner.sh --status "*) echo "${STUB_PHASE_RC:-0}"; exit 0 ;; esac
+fi
 if [ -f "$STUB_FIXTURES/$name.sh" ]; then
   # shellcheck disable=SC1090
   . "$STUB_FIXTURES/$name.sh" "$@"

@@ -4,9 +4,12 @@
 # With the server's profiler on (PPROF_PORT, localhost only), it also
 # saves a heap profile and the goroutine count every PROFILE_INTERVAL
 # seconds, into results/profiles/ and results/goroutines.csv, so memory
-# growth over a soak can be attributed.
+# growth over a soak can be attributed. Every TXN_INTERVAL seconds it
+# appends the server's transaction counters (started, retried, failed,
+# latency) per operation to results/txn.csv, so contention can be read
+# per load step.
 #
-#   sampler.sh start | stop | once | profile
+#   sampler.sh start | stop | once | profile | txn
 set -euo pipefail
 # shellcheck source=common.sh
 . "$(dirname "$0")/common.sh"
@@ -17,6 +20,8 @@ PIDFILE="$RUNDIR/sampler.pid"
 INTERVAL=${SAMPLE_INTERVAL:-15}
 PPROF_PORT=${PPROF_PORT:-7936}
 PROFILE_INTERVAL=${PROFILE_INTERVAL:-600}
+METRICS_ADDR=${METRICS_ADDR:-127.0.0.1:9090}
+TXN_INTERVAL=${TXN_INTERVAL:-60}
 
 cpu_ticks() { awk '/^cpu / {idle=$5+$6; total=0; for (i=2; i<=NF; i++) total+=$i; print total, idle}' "$PROC/stat"; }
 
@@ -47,19 +52,44 @@ profile() {
   echo "$ts,${n:-0}" >> "$RESULTS/goroutines.csv"
 }
 
+# txn: one row per operation with transaction counters. Counters are
+# cumulative; rates come from differences between rows.
+txn() {
+  local ts out
+  ts=$(date +%s)
+  out=$(curl -fsS --max-time 30 "http://$METRICS_ADDR/metrics" 2>/dev/null | awk -v ts="$ts" '
+    /^persistence_mongo_(transactions_(started|retried|failed)_total|transaction_latency_ms_(sum|count))\{/ {
+      name = $0; sub(/\{.*/, "", name)
+      if (!match($0, /operation="[^"]*"/)) next
+      op = substr($0, RSTART + 11, RLENGTH - 12)
+      ops[op] = 1; v[op, name] += $NF
+    }
+    END {
+      for (op in ops) printf "%s,%s,%d,%d,%d,%d,%d\n", ts, op,
+        v[op, "persistence_mongo_transactions_started_total"], v[op, "persistence_mongo_transactions_retried_total"],
+        v[op, "persistence_mongo_transactions_failed_total"], v[op, "persistence_mongo_transaction_latency_ms_sum"],
+        v[op, "persistence_mongo_transaction_latency_ms_count"]
+    }') || return 0
+  [[ -n "$out" ]] || return 0
+  [[ -s "$RESULTS/txn.csv" ]] || echo "ts,operation,started,retried,failed,latency_ms_sum,latency_count" > "$RESULTS/txn.csv"
+  echo "$out" >> "$RESULTS/txn.csv"
+}
+
 case "${1:-}" in
   once) sample 0 ;;
   profile) profile ;;
+  txn) txn ;;
   start)
     [[ -f "$PIDFILE" ]] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null && exit 0
     (
-      next=0
+      next=0 next_txn=0
       while true; do
         if (( $(date +%s) >= next )); then profile || true; next=$(( $(date +%s) + PROFILE_INTERVAL )); fi
+        if (( $(date +%s) >= next_txn )); then txn || true; next_txn=$(( $(date +%s) + TXN_INTERVAL )); fi
         sample "$INTERVAL" || true
       done
     ) </dev/null >/dev/null 2>&1 &
     echo $! > "$PIDFILE"; disown || true ;;
   stop) kill "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null || true; rm -f "$PIDFILE" ;;
-  *) echo "usage: sampler.sh start|stop|once|profile" >&2; exit 2 ;;
+  *) echo "usage: sampler.sh start|stop|once|profile|txn" >&2; exit 2 ;;
 esac

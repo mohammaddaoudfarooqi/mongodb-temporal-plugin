@@ -27,9 +27,15 @@ diagnostics, and remediations.
 ## Transaction abort storms on UpdateWorkflowExecution
 
 **Symptoms**
-- `persistence_mongo_transactions_retried_total` climbing on a
-  single workflow.
+- `persistence_mongo_transactions_retried_total{operation="UpdateWorkflowExecution"}`
+  climbing.
 - Client timeouts on `UpdateWorkflowExecution`.
+
+The counter counts each time the driver re-runs a transaction after a
+transient error: a write conflict, or an election or failover. Commit
+retries that do not re-run the transaction are not counted, so it is a
+lower bound. A burst during a failover is expected; a sustained rate is
+not.
 
 **Likely cause**
 - Hot workflow: a very short heartbeat loop hammering the same
@@ -78,20 +84,29 @@ diagnostics, and remediations.
   mode for latency-critical queries; Search is for list/count.
 - Check the Atlas Metrics dashboard for "Search replication lag".
 
-## Oplog rollover (self-hosted)
+## Oplog window too short
 
 **Symptoms**
-- Secondaries fall behind; `replSetGetStatus` shows `lagMillis` > 60s.
-- Eventual write errors from the plugin.
+- The oplog window in Atlas monitoring is minutes, not hours.
+- Atlas refuses a failover test with
+  `OPERATION_INVALID_MEMBER_OPLOG_CAPACITY` (it needs 3 hours).
+- A secondary that was down for longer than the window needs a full
+  initial sync; `replSetGetStatus` shows a secondary that cannot catch up.
 
 **Likely cause**
-- Oplog sizing too small for the current write rate.
+- The default oplog is too small for Temporal's write rate: the oplog
+  grows about six times faster than the data (about 76 KB per workflow
+  on the test workload; see the sizing guide's
+  [Oplog](sizing.md#oplog) section).
 
 **Fix**
-- Resize the oplog (`db.adminCommand({replSetResizeOplog: 1, size:
-  <new-MB>})` on the primary).
-- Long-term: monitor `db.oplog.rs.stats()` and size to retain at
-  least 24h of writes.
+- Atlas: set a minimum oplog window (`oplogMinRetentionHours`) with
+  storage auto-scaling, or set the oplog size explicitly.
+- Self-hosted: resize the oplog on each member
+  (`db.adminCommand({replSetResizeOplog: 1, size: <MB>})`), or set
+  `minRetentionHours`.
+- Size it as oplog rate × the window you need, and alert when the
+  window falls below it.
 
 ## Health-check failures
 

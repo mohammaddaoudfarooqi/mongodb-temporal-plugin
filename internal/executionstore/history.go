@@ -73,8 +73,20 @@ func (s *Stub) appendHistoryNodesIn(
 	ctx context.Context,
 	req *persistence.InternalAppendHistoryNodesRequest,
 ) error {
-	if s.db == nil || req == nil || req.BranchInfo == nil {
-		return errors.New("executionstore: uninitialised or invalid AppendHistoryNodes request")
+	if req == nil || req.BranchInfo == nil {
+		return errors.New("executionstore: invalid AppendHistoryNodes request")
+	}
+	// Temporal bounds a batch at system.transactionSizeLimit (4 MB by
+	// default). If that is raised past what one MongoDB document holds,
+	// refuse the batch with the error Temporal answers by terminating the
+	// workflow, instead of a BSONObjectTooLarge it would retry for ever.
+	if n := len(req.Node.Events.GetData()); n > payloadBudget {
+		return &persistence.TransactionSizeLimitError{
+			Msg: fmt.Sprintf("history batch of %d bytes for branch %s exceeds the %d-byte budget", n, req.BranchInfo.BranchId, payloadBudget),
+		}
+	}
+	if s.db == nil {
+		return errors.New("executionstore: uninitialised store")
 	}
 	branch := req.BranchInfo
 	nodeDoc := historyNodeDoc{
@@ -276,7 +288,7 @@ func (s *Stub) DeleteHistoryBranch(
 	}
 	defer sess.EndSession(ctx)
 
-	_, err = internalmongo.WithTxn[struct{}](ctx, internalmongo.NewSessionRunner(sess),
+	_, err = internalmongo.WithTxn[struct{}](ctx, s.txnRunner(sess, "DeleteHistoryBranch"),
 		func(sctx context.Context) (struct{}, error) {
 			for _, r := range ranges {
 				if _, err := s.db.Collection(historyNodesColl).DeleteMany(sctx, bson.M{

@@ -242,3 +242,56 @@ func TestWithTxn_DriverError_TranslatedOnce(t *testing.T) {
 		t.Errorf("operation should appear once in %q; got %d", err.Error(), n)
 	}
 }
+
+// recordingObserver counts transaction lifecycle events.
+type recordingObserver struct {
+	started, retried, failed, latencies int
+	op                                  string
+}
+
+func (r *recordingObserver) TxnStarted(op string)             { r.started++; r.op = op }
+func (r *recordingObserver) TxnRetried(string)                { r.retried++ }
+func (r *recordingObserver) TxnFailed(string)                 { r.failed++ }
+func (r *recordingObserver) TxnLatency(string, time.Duration) { r.latencies++ }
+
+// TestObserveTxns_CountsStartRetriesAndLatency: each callback re-run by
+// the driver (a write conflict or other transient error) counts as one
+// retry; the driver's loop still does the retrying.
+func TestObserveTxns_CountsStartRetriesAndLatency(t *testing.T) {
+	obs := &recordingObserver{}
+	var attempts int32
+	_, err := internalmongo.WithTxn[string](context.Background(),
+		internalmongo.ObserveTxns(&fakeTxn{retries: 3}, obs, "UpdateWorkflowExecution"),
+		func(context.Context) (string, error) {
+			if atomic.AddInt32(&attempts, 1) < 3 {
+				return "", &labeled{msg: "write conflict", labels: []string{"TransientTransactionError"}}
+			}
+			return "ok", nil
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if obs.started != 1 || obs.retried != 2 || obs.failed != 0 || obs.latencies != 1 || obs.op != "UpdateWorkflowExecution" {
+		t.Errorf("observer = %+v", *obs)
+	}
+}
+
+func TestObserveTxns_FailureCounted(t *testing.T) {
+	obs := &recordingObserver{}
+	_, err := internalmongo.WithTxn[string](context.Background(),
+		internalmongo.ObserveTxns(&fakeTxn{retries: 3}, obs, "op"),
+		func(context.Context) (string, error) { return "", errors.New("boom") })
+	if err == nil {
+		t.Fatal("want error")
+	}
+	if obs.started != 1 || obs.retried != 0 || obs.failed != 1 || obs.latencies != 1 {
+		t.Errorf("observer = %+v", *obs)
+	}
+}
+
+func TestObserveTxns_NilObserver_ReturnsRunnerUnchanged(t *testing.T) {
+	txn := &fakeTxn{}
+	if got := internalmongo.ObserveTxns(txn, nil, "op"); got != internalmongo.TxnRunner(txn) {
+		t.Error("a nil observer must not wrap the runner")
+	}
+}
