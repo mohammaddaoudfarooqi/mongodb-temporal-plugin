@@ -15,9 +15,11 @@
 #   - platform canary: the integration tier on the newest runner image,
 #     reported but not gating
 #
-# Runner images are pinned (ubuntu-24.04), so a GitHub image upgrade
-# can't break every job at once: Ubuntu 26.04's kernel 7.0 makes
-# MongoDB 8.0.34 and 8.3.13 exit at start-up (SERVER-136848).
+# Runner images are pinned (ubuntu-22.04), so a GitHub image upgrade
+# can't break every job at once: kernel 7.0 makes MongoDB 8.0.34 and
+# 8.3.13 exit at start-up (SERVER-136848). ubuntu-24.04 moved to kernel
+# 7.0 in image 20261026; 22.04 is still on 6.8. Move back once
+# 8.0.35 / 8.3.14 ship and the platform canary passes.
 #   - Atlas live-cluster e2e (gated on secrets availability)
 #   - load test (M30-equivalent)
 #
@@ -51,7 +53,7 @@ concurrency:
 
 jobs:
   static-analysis:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
@@ -69,7 +71,7 @@ jobs:
   # (non-root user, tini, HEALTHCHECK, OCI labels) and drives the
   # containerised schema tool against a real MongoDB.
   image:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     needs: [unit]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -83,7 +85,7 @@ jobs:
           MONGO_VERSION: "6.0"
 
   dco:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with: { fetch-depth: 0 }
@@ -102,7 +104,7 @@ jobs:
           fi
 
   unit:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     needs: [static-analysis]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -117,7 +119,7 @@ jobs:
 
   examples:
     # The example modules and the showcase's browser UI.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     needs: [static-analysis]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -132,7 +134,7 @@ jobs:
       - run: make examples
 
   integration:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     needs: [unit]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -150,7 +152,7 @@ jobs:
   # Runs after both profile-emitting jobs so the merge script has both
   # inputs. Unlike the unit-only gate, this one enforces the spec floor.
   coverage-combined:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     needs: [unit, integration]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -165,7 +167,7 @@ jobs:
       - run: make coverage-combined-gate
 
   conformance-6:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     needs: [integration]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -181,7 +183,7 @@ jobs:
     # Run it by hand before a release with `gh workflow run CI`. Uses the
     # MONGO_VERSION env var read by internal/testutil.MongoImage.
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     needs: [unit]
     strategy:
       fail-fast: false
@@ -197,7 +199,7 @@ jobs:
 
   conformance-matrix:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
@@ -240,7 +242,7 @@ jobs:
     # suites as shipped by that release. 1.30 cannot be supported by
     # this module line. Weekly and manual only.
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     needs: [unit]
     strategy:
       fail-fast: false
@@ -261,7 +263,7 @@ jobs:
     # `schedule` events so PRs do not consume Atlas capacity, and it
     # skips cleanly (exit 0) if ATLAS_URI / ATLAS_DATABASE are not set.
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     environment: atlas-e2e
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -285,7 +287,7 @@ jobs:
     # would still show up as a percentile spike relative to the
     # prior nightly, which is the value this report adds.
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     needs: [integration]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
